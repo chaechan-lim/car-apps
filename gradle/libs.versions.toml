@@ -1,0 +1,27 @@
+[versions]
+agp = "8.7.3"
+kotlin = "2.0.21"
+coreKtx = "1.15.0"
+appcompat = "1.7.0"
+lifecycle = "2.8.7"
+# 1.7.0 is the current stable Car App Library.
+# Google I/O 2026 shipped 1.9.0-alpha01 (adaptive mini-player, Chip/CondensedItem,
+# templated media). Bump here once you want those.
+carApp = "1.7.0"
+
+[libraries]
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
+androidx-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+
+# Shared template/hardware APIs.
+car-app = { module = "androidx.car.app:app", version.ref = "carApp" }
+# Android Auto (phone projects onto the head unit).
+car-app-projected = { module = "androidx.car.app:app-projected", version.ref = "carApp" }
+# Android Automotive OS (app runs natively in the car).
+car-app-automotive = { module = "androidx.car.app:app-automotive", version.ref = "carApp" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
