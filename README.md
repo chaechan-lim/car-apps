@@ -67,24 +67,37 @@ brake. The `automotive` module measures where any particular car sits in that ra
 
 ## Prebuilt APKs
 
-Phone-installable builds of the Android Auto probe live in [`dist/`](dist/). The
-AAOS module is not published there — it declares
-`android.hardware.type.automotive` as required, so a phone refuses to install it.
+Published on the [Releases page](../../releases), built by CI from a clean
+checkout. Install on a phone — the AAOS module is not published because it
+declares `android.hardware.type.automotive` as required and a phone refuses it.
 
-| File | Use |
+| Asset | Use |
 |---|---|
-| `car-probe-auto-0.1.0-release.apk` | Start here |
-| `car-probe-auto-0.1.0-debug.apk` | Fallback if the app never appears in the car launcher |
+| `*-release.apk` | Start here |
+| `*-debug.apk` | Fallback if the app never appears in the car launcher |
 
-Both are signed with the throwaway `testkey.jks` in this repo, so either can be
-installed over the other and over your own local builds.
+Both are signed with the throwaway `testkey.jks` in this repo, so either installs
+over the other and over your own local builds.
 
 **Why a fallback exists:** `ProbeCarAppService` validates the connecting host. Debug
 builds accept any host (`ALLOW_ALL_HOSTS_VALIDATOR`); the release build accepts only
-`hosts_allowlist_sample`, the signature list shipped with the Car App Library. That
-list covers stock Android Auto, but it has not been tested against a real head unit
-here — if the release build installs yet never shows up on the car screen, host
-validation is the first thing to suspect, and the debug APK rules it in or out.
+`hosts_allowlist_sample`, the signature list shipped with the Car App Library.
+
+### If the app does not appear in the car launcher
+
+The failure is silent — a car app that the host rejects installs fine and simply
+never shows up. In order of likelihood:
+
+1. **`androidx.car.app.minCarApiLevel` missing from the manifest.** The host refuses
+   to bind with *"Min API level not declared in manifest"*. This bit v0.1.0; fixed
+   in v0.1.1.
+2. **Unknown sources not enabled** in Android Auto's developer settings.
+3. **Samsung battery optimisation** — apps put to sleep stay visible on the phone but
+   are hidden from the Android Auto launcher. Open the app on the phone and turn off
+   *"Put unused apps to sleep"*.
+4. **Host validation** — swap the release APK for the debug one to rule it in or out.
+5. **Category** — the service declares `androidx.car.app.category.IOT`. If a host
+   does not surface that category, try another permitted one.
 
 ## Running it
 
