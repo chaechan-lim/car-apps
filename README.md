@@ -119,18 +119,36 @@ adb logcat | grep -iE "carapp|gearhead|dev\.carapps"
 > installs cleanly, is silently ignored by the host, and logs nothing useful. This
 > cost several release cycles to find; do not repeat it.
 
-Two routes actually work:
+Three routes, cheapest first:
 
-**Desktop Head Unit** — sideloading works here, so it verifies the app without a car.
+**Set the installer package** — free, needs adb. The trusted-source check reads
+which package installed the APK, and adb can set that:
+
+```
+adb uninstall dev.carapps.probe.projected
+adb install -i com.android.vending car-probe-auto-<version>-release.apk
+```
+
+Not a documented Google method — a community workaround, reported to make
+sideloaded templated apps appear in the launcher (this is the same problem
+[OsmAnd hit on Android 11+](https://github.com/osmandapp/OsmAnd/issues/15400)).
+It may be closed off on current Android. Costs nothing to find out, so try it
+before paying for anything.
+
+**Desktop Head Unit** — free, no car. Plain sideloading works here, so it confirms
+the app itself is sound even if it cannot answer what a real vehicle reports.
 
 ```
 ./gradlew :projected:installDebug
 $ANDROID_HOME/extras/google/auto/desktop-head-unit
 ```
 
-**Google Play Internal App Sharing** or an **Internal Test Track** — the only way
-into a real vehicle. Neither goes through form-factor review, so the turnaround is
-an upload rather than a submission. Requires a Play Console account.
+**Google Play Internal App Sharing** or an **Internal Test Track** — the reliable
+way into a real vehicle. Upload an APK, get a link, install from it. Neither track
+goes through form-factor review and the 12-testers/14-days rule applies to
+production only, so turnaround is an upload rather than a submission. Needs a Play
+Console account: $25 once, non-refundable, plus identity verification. Sharing
+links expire after 60 days.
 
 Once it runs: open **Car Probe** from the car launcher, drill into each group, tap
 **Log**, then export from the phone app (Copy / Share / GitHub issue) or read it
