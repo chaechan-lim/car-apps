@@ -85,47 +85,56 @@ builds accept any host (`ALLOW_ALL_HOSTS_VALIDATOR`); the release build accepts 
 
 ### If the app does not appear in the car launcher
 
-The failure is silent — a car app that the host rejects installs fine and simply
-never shows up. In order of likelihood:
+**First check how it was installed.** If the APK was sideloaded, that is the
+answer — see the box above — and no manifest change will help.
+
+Installed from a trusted source and still missing? Then, in order:
 
 1. **`androidx.car.app.minCarApiLevel` missing from the manifest.** The host refuses
-   to bind with *"Min API level not declared in manifest"*. This bit v0.1.0; fixed
-   in v0.1.1.
-2. **Unknown sources not enabled** in Android Auto's developer settings.
-3. **Samsung battery optimisation** — apps put to sleep stay visible on the phone but
+   to bind with *"Min API level not declared in manifest"*. Fixed in v0.1.1.
+2. **Category** — v0.1.2 declares POI and IOT together to cover either.
+3. **Host validation** — swap the release APK for the debug one to rule it in or out.
+4. **Samsung battery optimisation** — apps put to sleep stay visible on the phone but
    are hidden from the Android Auto launcher. Open the app on the phone and turn off
    *"Put unused apps to sleep"*.
-4. **Host validation** — swap the release APK for the debug one to rule it in or out.
-5. **Category** — v0.1.2 declares POI and IOT together to cover either.
 
-Every one of these fails the same way: the APK installs, nothing errors, and the
-app is simply absent. Guessing between them is slow, so get the host's own reason
-instead — with the phone connected to the head unit:
+All of these fail identically: the APK installs, nothing errors, the app is absent.
+Guessing between them costs a release cycle each, so get the host's own reason
+instead — with the phone connected:
 
 ```
 adb logcat | grep -iE "carapp|gearhead|dev\.carapps"
 ```
 
-The host logs why it skipped an app. That single line settles in seconds what a
-release cycle only guesses at.
-
 ## Running it
 
 ### Android Auto (`:projected`)
 
-Testable today on any Android Auto head unit — no OEM approval, no partner
-agreement, no connected-services subscription.
+> **A sideloaded APK will not appear in a real car, no matter what the manifest
+> says.** Android Auto only runs templated apps installed from a trusted source.
+> Its **Unknown sources** developer setting does *not* cover them — per
+> [the testing guide](https://developer.android.com/training/cars/testing), that
+> setting "applies to media, messaging notifications, and parked apps but doesn't
+> apply to apps built using the Android for Cars App Library". A sideloaded build
+> installs cleanly, is silently ignored by the host, and logs nothing useful. This
+> cost several release cycles to find; do not repeat it.
 
-1. In the Android Auto app on the phone, tap the version number 10 times to unlock
-   **Developer settings**, then enable **Unknown sources**.
-2. `./gradlew :projected:installDebug`
-3. Connect to the head unit, or run the Desktop Head Unit:
-   `$ANDROID_HOME/extras/google/auto/desktop-head-unit`
-4. Open **Car Probe** from the car launcher, drill into each group.
-5. Tap **Log**, then capture the full table:
-   ```
-   adb logcat -s CarProbe
-   ```
+Two routes actually work:
+
+**Desktop Head Unit** — sideloading works here, so it verifies the app without a car.
+
+```
+./gradlew :projected:installDebug
+$ANDROID_HOME/extras/google/auto/desktop-head-unit
+```
+
+**Google Play Internal App Sharing** or an **Internal Test Track** — the only way
+into a real vehicle. Neither goes through form-factor review, so the turnaround is
+an upload rather than a submission. Requires a Play Console account.
+
+Once it runs: open **Car Probe** from the car launcher, drill into each group, tap
+**Log**, then export from the phone app (Copy / Share / GitHub issue) or read it
+with `adb logcat -s CarProbe`.
 
 Permission prompts appear on the **phone**, not the car screen. Denying one is a
 valid experiment — the field then reports as unavailable instead of crashing.

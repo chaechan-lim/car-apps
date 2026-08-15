@@ -100,23 +100,31 @@ class PhoneActivity : AppCompatActivity() {
 
         No report yet. The probe runs on the car display, not here.
 
-        1. Android Auto settings on the phone: tap the version
-           10 times to unlock Developer settings, then enable
-           "Unknown sources".
-        2. Connect to the head unit.
-        3. Open "Car Probe" from the car launcher.
-        4. Tap "Log" on the car screen.
-        5. Come back here to copy, share, or file the report.
+        IF THIS APP IS NOT IN THE CAR LAUNCHER
+
+        Sideloading does not work for this kind of app. Android
+        Auto only runs templated apps installed from a trusted
+        source, and its "Unknown sources" developer setting does
+        not cover them — that toggle applies to media, messaging
+        and parked apps only. So a sideloaded APK installs fine
+        and is then ignored by the car, with no error anywhere.
+
+        Two ways around it:
+
+        - Desktop Head Unit (DHU) on a computer. Sideloading
+          works there, so it verifies the app without a car.
+        - Google Play Internal App Sharing or an Internal Test
+          Track. Neither goes through review, and an app
+          installed that way counts as trusted.
+
+        ONCE IT RUNS
+
+        1. Open "Car Probe" from the car launcher.
+        2. Tap "Log" on the car screen.
+        3. Come back here to copy, share, or file the report.
 
         Expect several fields to report UNAVAILABLE. That is the
         measurement, not a bug.
-
-        Note: this screen can only export what the probe collected.
-        If the app never appears on the car screen at all, the host
-        rejected it before it ran, and only the host's own log says
-        why:
-
-            adb logcat | grep -iE "carapp|gearhead|dev\.carapps"
     """.trimIndent()
 
     private companion object {

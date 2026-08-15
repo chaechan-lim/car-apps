@@ -5,10 +5,19 @@ Android Auto vehicle data probe. Install on a **phone**, not the car.
 | `*-release.apk` | Start here |
 | `*-debug.apk` | Fallback if the app never appears in the car launcher |
 
-After installing, the app still has to be allowed through Android Auto: open the
-Android Auto settings on the phone, tap the version 10 times to unlock
-**Developer settings**, then enable **Unknown sources**. Launching the app on the
-phone only shows instructions — the probe itself runs on the car display.
+> **Sideloading these APKs into a real car does not work.** Android Auto only runs
+> templated apps installed from a trusted source, and its **Unknown sources**
+> developer setting does not cover them — it
+> ["applies to media, messaging notifications, and parked apps but doesn't apply to
+> apps built using the Android for Cars App Library"](https://developer.android.com/training/cars/testing).
+> The APK installs cleanly and the car then ignores it, silently.
+>
+> Use the **Desktop Head Unit** to verify without a car, or **Google Play Internal
+> App Sharing** / an **Internal Test Track** to reach a real vehicle. Neither track
+> goes through form-factor review.
+
+Launching the app on the phone only shows instructions — the probe itself runs on
+the car display, and the phone screen is where its report gets exported.
 
 The two builds differ in host validation: debug accepts any host
 (`ALLOW_ALL_HOSTS_VALIDATOR`), release accepts only `hosts_allowlist_sample`. If
