@@ -21,23 +21,21 @@
           Required. Without it the host refuses to bind with "Min API level not
           declared in manifest" and the app silently never appears in the car
           launcher — it does not fail at install time.
-          Level 3 is what CarInfo/CarSensors need; ExteriorDimensions would need 7.
+
+          Declared as 1, matching the official samples. CarInfo/CarSensors need
+          level 3, but declaring 3 here would make a lower-level host skip the app
+          entirely rather than run it degraded, so the level is checked at runtime
+          in GroupsScreen instead — an unsupported host then says so on screen,
+          which is a result, whereas an absent app is not.
         -->
         <meta-data
             android:name="androidx.car.app.minCarApiLevel"
-            android:value="3" />
+            android:value="1" />
 
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
-        <!--
-          IOT is the closest permitted category for a vehicle-state app. There is no
-          "diagnostics" or "dashboard" category, and publishing under a category that
-          does not match the app is the usual cause of the Play review rejection
-          "Auto App Quality Guidelines: Category not permitted".
-          For sideloaded development this only affects which host surfaces show the app.
-        -->
         <!-- The launcher tile takes its label and icon from the service, not the
              application element. -->
         <service
@@ -45,8 +43,20 @@
             android:exported="true"
             android:icon="@android:drawable/ic_menu_info_details"
             android:label="@string/app_name">
+            <!--
+              Two categories on purpose. There is no "diagnostics" category, and it
+              is not established which of these a given host surfaces in its
+              launcher. Intent matching requires every category in the query to be
+              present in the filter, so listing both makes this service match a host
+              enumerating either one.
+
+              A bench-tool hedge, not a pattern to publish: a Play release must
+              declare the one category the app actually is, or review rejects it
+              with "Auto App Quality Guidelines: Category not permitted".
+            -->
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.POI" />
                 <category android:name="androidx.car.app.category.IOT" />
             </intent-filter>
         </service>

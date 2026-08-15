@@ -9,6 +9,7 @@ import androidx.car.app.model.Action
 import androidx.car.app.model.Header
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
+import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -42,6 +43,23 @@ class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycl
     }
 
     override fun onGetTemplate(): Template {
+        // CarHardwareManager arrived in Car App API level 3. The manifest declares
+        // level 1 so that older hosts still launch the app and can report this,
+        // rather than filtering it out of the launcher with no explanation.
+        if (carContext.carAppApiLevel < REQUIRED_API_LEVEL) {
+            return MessageTemplate.Builder(
+                "This host is Car App API level ${carContext.carAppApiLevel}. " +
+                    "Vehicle data needs level $REQUIRED_API_LEVEL, so there is nothing to probe."
+            )
+                .setHeader(
+                    Header.Builder()
+                        .setTitle(carContext.getString(R.string.app_name))
+                        .setStartHeaderAction(Action.APP_ICON)
+                        .build()
+                )
+                .build()
+        }
+
         val snapshot = ProbeController.snapshot
             ?: return ListTemplate.Builder()
                 .setHeader(
@@ -101,6 +119,10 @@ class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycl
     }
 
     private fun requestCarPermissionsThenStart() {
+        if (carContext.carAppApiLevel < REQUIRED_API_LEVEL) {
+            Log.w(TAG, "host is API level ${carContext.carAppApiLevel}, skipping probe")
+            return
+        }
         val permissions = listOf(
             "com.google.android.gms.permission.CAR_FUEL",
             "com.google.android.gms.permission.CAR_SPEED",
@@ -119,5 +141,8 @@ class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycl
 
     private companion object {
         const val TAG = "CarProbe"
+
+        /** CarHardwareManager, and therefore everything this app measures. */
+        const val REQUIRED_API_LEVEL = 3
     }
 }

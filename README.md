@@ -96,8 +96,18 @@ never shows up. In order of likelihood:
    are hidden from the Android Auto launcher. Open the app on the phone and turn off
    *"Put unused apps to sleep"*.
 4. **Host validation** — swap the release APK for the debug one to rule it in or out.
-5. **Category** — the service declares `androidx.car.app.category.IOT`. If a host
-   does not surface that category, try another permitted one.
+5. **Category** — v0.1.2 declares POI and IOT together to cover either.
+
+Every one of these fails the same way: the APK installs, nothing errors, and the
+app is simply absent. Guessing between them is slow, so get the host's own reason
+instead — with the phone connected to the head unit:
+
+```
+adb logcat | grep -iE "carapp|gearhead|dev\.carapps"
+```
+
+The host logs why it skipped an app. That single line settles in seconds what a
+release cycle only guesses at.
 
 ## Running it
 
