@@ -18,9 +18,21 @@ product decision is made on top of it.
 | `projected` | Android Auto | Templated car app (IOT category) showing the probe results grouped by API, plus a logcat report |
 | `automotive` | Android Automotive OS | Sideloadable activity that scans **every** `VehiclePropertyIds` constant via `CarPropertyManager` and reports readable / no-access / no-value |
 
+The two apps are independent APKs with different package names, not one build that
+adapts. They have to be: the Car App Library ships separate artifacts per platform
+(`app-projected` / `app-automotive`), the permissions live in different namespaces
+(`com.google.android.gms.permission.CAR_*` vs `android.car.permission.CAR_*`), and
+the `automotive` APK gates on `android.hardware.type.automotive` so it will not
+install on a phone at all.
+
+The `core` probe is therefore only exercised on Android Auto. On AAOS the
+`CarPropertyManager` scan is a superset of what `CarInfo` would surface — `CarInfo`
+is a thin wrapper over the same properties — so running both there would measure
+the same thing twice.
+
 ## What is being measured
 
-### Car App Library (both platforms)
+### Car App Library — `:projected`, Android Auto
 
 The full surface is small — this is all of it:
 
@@ -34,8 +46,10 @@ The full surface is small — this is all of it:
 | `TollCard` | `cardState` |
 | `CarSensors` | `Accelerometer`, `Gyroscope`, `Compass`, `CarHardwareLocation` |
 
-Known asymmetries going in, from
-[the Car Hardware API docs](https://developer.android.com/training/cars/apps/library/car-hardware-api):
+Documented platform differences, from
+[the Car Hardware API docs](https://developer.android.com/training/cars/apps/library/car-hardware-api).
+These are Google's claims, not measurements from this repo — the AAOS side is
+covered by the property scan instead:
 
 - `Mileage` is **not** available to AAOS apps installed from Google Play, but *is*
   available on Android Auto. Odometer deltas are the accurate basis for fuel/energy
@@ -44,7 +58,7 @@ Known asymmetries going in, from
   `LocationManager` there instead.
 - `ExteriorDimensions` is AAOS-only and needs Car App API level 7.
 
-### AAOS `CarPropertyManager`
+### `CarPropertyManager` — `:automotive`, Android Automotive OS
 
 ~250 standard properties exist, but roughly 180 of them sit behind OEM signature
 permissions that no third-party app can hold. A "Google built-in" car is only

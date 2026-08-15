@@ -36,7 +36,9 @@ android {
 }
 
 dependencies {
-    implementation(project(":core"))
+    // Deliberately no dependency on :core. The Car App Library probe is an
+    // Android Auto concern; on AAOS the CarPropertyManager scan below is a
+    // superset of what CarInfo would report.
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.car.app.automotive)

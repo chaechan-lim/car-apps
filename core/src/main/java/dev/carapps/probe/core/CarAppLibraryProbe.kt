@@ -20,11 +20,16 @@ import java.util.concurrent.Executor
 /**
  * Probes every field the Car App Library exposes and reports the status of each.
  *
- * Works on both Android Auto (`app-projected`) and Android Automotive OS
- * (`app-automotive`), which is exactly what makes it useful — the same build run
- * on both platforms shows the asymmetries directly. Known ones going in:
+ * Used by the `:projected` (Android Auto) app. The API also exists on Android
+ * Automotive OS, but there it is a thin wrapper over `CarPropertyManager`, which
+ * the `:automotive` module scans in full — so this probe is deliberately not wired
+ * up on that side.
  *
- *  - `Mileage` is documented as unavailable to AAOS apps installed from Google Play.
+ * Google documents a few platform differences that are worth keeping in mind when
+ * reading results, though none of them are verified here:
+ *
+ *  - `Mileage` is documented as unavailable to AAOS apps installed from Google Play,
+ *    but available on Android Auto.
  *  - `CarSensors` returns STATUS_UNIMPLEMENTED on AAOS; use SensorManager there.
  *  - `ExteriorDimensions` is AAOS-only and needs Car App API level 7.
  *
