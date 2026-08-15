@@ -15,9 +15,22 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        // Throwaway key committed to the repo so anyone can build an APK that
+        // installs over the published one. This app is a bench tool and is not
+        // going to Play — do not reuse this key for anything that is.
+        create("test") {
+            storeFile = rootProject.file("testkey.jks")
+            storePassword = "carprobe"
+            keyAlias = "carprobe"
+            keyPassword = "carprobe"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("test")
         }
     }
 

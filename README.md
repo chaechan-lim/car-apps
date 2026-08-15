@@ -65,6 +65,27 @@ permissions that no third-party app can hold. A "Google built-in" car is only
 required to implement four: gear selection, night mode, vehicle speed, and parking
 brake. The `automotive` module measures where any particular car sits in that range.
 
+## Prebuilt APKs
+
+Phone-installable builds of the Android Auto probe live in [`dist/`](dist/). The
+AAOS module is not published there — it declares
+`android.hardware.type.automotive` as required, so a phone refuses to install it.
+
+| File | Use |
+|---|---|
+| `car-probe-auto-0.1.0-release.apk` | Start here |
+| `car-probe-auto-0.1.0-debug.apk` | Fallback if the app never appears in the car launcher |
+
+Both are signed with the throwaway `testkey.jks` in this repo, so either can be
+installed over the other and over your own local builds.
+
+**Why a fallback exists:** `ProbeCarAppService` validates the connecting host. Debug
+builds accept any host (`ALLOW_ALL_HOSTS_VALIDATOR`); the release build accepts only
+`hosts_allowlist_sample`, the signature list shipped with the Car App Library. That
+list covers stock Android Auto, but it has not been tested against a real head unit
+here — if the release build installs yet never shows up on the car screen, host
+validation is the first thing to suspect, and the debug APK rules it in or out.
+
 ## Running it
 
 ### Android Auto (`:projected`)
