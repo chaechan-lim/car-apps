@@ -1,16 +1,18 @@
 package dev.carapps.probe.automotive
 
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
-import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import android.content.pm.PackageManager
+import dev.carapps.probe.core.ReportExport
+import dev.carapps.probe.core.ReportStore
 
 /**
  * Sideload-and-look diagnostic. Renders the full CarPropertyManager scan so the
@@ -22,6 +24,7 @@ import android.content.pm.PackageManager
 class PropertyDumpActivity : AppCompatActivity() {
 
     private lateinit var output: TextView
+    private var report: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,25 +36,37 @@ class PropertyDumpActivity : AppCompatActivity() {
             setTextIsSelectable(true)
         }
 
-        val rescan = Button(this).apply {
-            text = getString(R.string.rescan)
-            setOnClickListener { runScan() }
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(32, 16, 32, 0)
+            addView(button(getString(R.string.rescan)) { runScan() })
+            addView(
+                button("Copy") {
+                    withReport {
+                        ReportExport.copyToClipboard(this@PropertyDumpActivity, it)
+                        Toast.makeText(this@PropertyDumpActivity, "Copied", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+            addView(button("Share") { withReport { startActivity(ReportExport.shareIntent(it)) } })
+            addView(
+                button("Issue") {
+                    withReport {
+                        startActivity(
+                            ReportExport.githubIssueIntent(
+                                repo = REPO,
+                                title = "AAOS vehicle property scan",
+                                report = it,
+                            )
+                        )
+                    }
+                }
+            )
         }
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(
-                rescan,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    gravity = Gravity.END
-                    marginStart = 32
-                    marginEnd = 32
-                    topMargin = 16
-                },
-            )
+            addView(actions)
             addView(
                 ScrollView(this@PropertyDumpActivity).apply { addView(output) },
                 LinearLayout.LayoutParams(
@@ -72,10 +87,30 @@ class PropertyDumpActivity : AppCompatActivity() {
         output.text = getString(R.string.scanning)
         // The scan touches the binder for every property; keep it off the main thread.
         Thread {
-            val report = VehiclePropertyScanner(this).scan().toReport()
+            val report = ReportExport.environmentHeader(this) + "\n" +
+                VehiclePropertyScanner(this).scan().toReport()
             report.lineSequence().forEach { Log.i(TAG, it) }
-            runOnUiThread { output.text = report }
+            ReportStore(this).write(report)
+            runOnUiThread {
+                this.report = report
+                output.text = report
+            }
         }.start()
+    }
+
+    private fun withReport(action: (String) -> Unit) {
+        val current = report
+        if (current == null) {
+            Toast.makeText(this, "Scan has not finished yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        action(current)
+    }
+
+    private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
+        text = label
+        setOnClickListener { onClick() }
+        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
     }
 
     private fun requestMissingPermissions() {
@@ -107,5 +142,6 @@ class PropertyDumpActivity : AppCompatActivity() {
     private companion object {
         const val TAG = "CarProbe"
         const val REQUEST_CODE = 1001
+        const val REPO = "chaechan-lim/car-apps"
     }
 }

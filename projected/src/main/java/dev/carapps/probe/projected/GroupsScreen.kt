@@ -15,6 +15,8 @@ import androidx.car.app.model.Template
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import dev.carapps.probe.core.FieldStatus
+import dev.carapps.probe.core.ReportExport
+import dev.carapps.probe.core.ReportStore
 
 /**
  * Root screen: one row per data group, showing how many of its fields the head
@@ -113,9 +115,18 @@ class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycl
      */
     private fun dumpReport() {
         val snapshot = ProbeController.snapshot ?: return
-        snapshot.toReport().lineSequence().forEach { Log.i(TAG, it) }
-        CarToast.makeText(carContext, "Report written to logcat (tag: $TAG)", CarToast.LENGTH_LONG)
-            .show()
+        val report = ReportExport.environmentHeader(carContext) + "\n" + snapshot.toReport()
+
+        report.lineSequence().forEach { Log.i(TAG, it) }
+        // Persisted as well as logged: the session is usually gone by the time
+        // anyone opens the phone app to send it anywhere.
+        ReportStore(carContext).write(report)
+
+        CarToast.makeText(
+            carContext,
+            "Report saved — open Car Probe on the phone to send it",
+            CarToast.LENGTH_LONG,
+        ).show()
     }
 
     private fun requestCarPermissionsThenStart() {
