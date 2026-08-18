@@ -150,6 +150,14 @@ production only, so turnaround is an upload rather than a submission. Needs a Pl
 Console account: $25 once, non-refundable, plus identity verification. Sharing
 links expire after 60 days.
 
+Only **Google Play and ONE store** count as trusted sources. The Galaxy Store does
+not, so publishing there does not get an app into the car. ONE store does, has free
+developer registration open to individuals, and documents
+[its own Android Auto review guidelines](https://onestore-dev.gitbook.io/dev/eng/docs/review/android-auto-review-guideline)
+— but it is real distribution with a real review, unlike Play's internal tracks.
+That makes it a poor fit for a bench tool that would have to pass review as a
+consumer app, and a good account to hold for anything actually shipping in Korea.
+
 Once it runs: open **Car Probe** from the car launcher, drill into each group, tap
 **Log**, then export from the phone app (Copy / Share / GitHub issue) or read it
 with `adb logcat -s CarProbe`.
