@@ -36,6 +36,13 @@
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
+        <!-- Listed with minCarApiLevel in the setup guide. Nothing here needs custom
+             colours, but the library themes its own permission activity from this,
+             which is the one screen this app makes the host draw. -->
+        <meta-data
+            android:name="androidx.car.app.theme"
+            android:resource="@style/CarAppTheme" />
+
         <!-- The launcher tile takes its label and icon from the service, not the
              application element. -->
         <service
@@ -44,19 +51,16 @@
             android:icon="@android:drawable/ic_menu_info_details"
             android:label="@string/app_name">
             <!--
-              Two categories on purpose. There is no "diagnostics" category, and it
-              is not established which of these a given host surfaces in its
-              launcher. Intent matching requires every category in the query to be
-              present in the filter, so listing both makes this service match a host
-              enumerating either one.
-
-              A bench-tool hedge, not a pattern to publish: a Play release must
-              declare the one category the app actually is, or review rejects it
-              with "Auto App Quality Guidelines: Category not permitted".
+              One category, and the honest one. v0.1.2 also declared POI as a hedge
+              on the theory that a filter may carry more categories than the query
+              matches — true of plain intent resolution, never verified of this
+              host. It also described the app as something it is not: POI means a
+              map app, and the reference POI sample pairs it with the
+              MAP_TEMPLATES permission this app has no use for. A declaration that
+              contradicts the app is a worse bet than a narrow one.
             -->
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
-                <category android:name="androidx.car.app.category.POI" />
                 <category android:name="androidx.car.app.category.IOT" />
             </intent-filter>
         </service>

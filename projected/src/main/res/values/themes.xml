@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Referenced by the androidx.car.app.theme meta-data. The host reads these
+      colours when it draws library-owned screens on the car display, chiefly the
+      permission prompt. Values are deliberately plain — this is a bench tool, and
+      the point of declaring the theme is that the setup guide lists it, not that
+      the app wants a look of its own.
+    -->
+    <style name="CarAppTheme">
+        <item name="carColorPrimary">@android:color/holo_blue_dark</item>
+        <item name="carColorPrimaryDark">@android:color/holo_blue_dark</item>
+        <item name="carColorSecondary">@android:color/holo_blue_light</item>
+        <item name="carColorSecondaryDark">@android:color/holo_blue_light</item>
+    </style>
+</resources>
