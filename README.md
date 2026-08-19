@@ -135,13 +135,22 @@ sideloaded templated apps appear in the launcher (this is the same problem
 It may be closed off on current Android. Costs nothing to find out, so try it
 before paying for anything.
 
-**Desktop Head Unit** — free, no car. Plain sideloading works here, so it confirms
-the app itself is sound even if it cannot answer what a real vehicle reports.
+**Desktop Head Unit** — free, no car. Plain sideloading works here, so it cannot
+answer what a real vehicle reports, but it does answer the question worth settling
+before paying for anything: whether the app is sound at all.
 
 ```
+sdkmanager "extras;google;auto"
 ./gradlew :projected:installDebug
+# phone: Android Auto developer settings -> "Start head unit server"
+adb forward tcp:5277 tcp:5277
 $ANDROID_HOME/extras/google/auto/desktop-head-unit
 ```
+
+If the app appears in the DHU launcher, it works and only distribution is blocking
+it — a Play Console account will fix that. If it does *not* appear in the DHU
+either, the app has a real defect and paying for Play distribution would not have
+helped. Run this before spending the $25.
 
 **Google Play Internal App Sharing** or an **Internal Test Track** — the reliable
 way into a real vehicle. Upload an APK, get a link, install from it. Neither track
