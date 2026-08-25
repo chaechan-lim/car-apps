@@ -11,6 +11,16 @@
     <uses-permission android:name="com.google.android.gms.permission.CAR_MILEAGE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
+    <!--
+      Android 11 package visibility. Without this, querying Android Auto's package
+      throws NameNotFound and the diagnostic reports it as absent on a phone where
+      it is installed and running — a false negative in exactly the report meant to
+      explain a failure.
+    -->
+    <queries>
+        <package android:name="com.google.android.projection.gearhead" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@android:drawable/ic_menu_info_details"

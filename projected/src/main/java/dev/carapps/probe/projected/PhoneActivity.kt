@@ -75,18 +75,30 @@ class PhoneActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        report = ReportStore(this).read()
-        reportView.text = report ?: instructions()
+        // The self-check needs no car, so there is always something to send — the
+        // case worth reporting is usually the one where the probe never ran.
+        val carReport = ReportStore(this).read()
+        report = buildString {
+            append(ReportExport.environmentHeader(this@PhoneActivity))
+            appendLine()
+            append(SelfCheck.run(this@PhoneActivity))
+            appendLine()
+            appendLine()
+            if (carReport == null) {
+                appendLine("## Car report")
+                appendLine()
+                appendLine("None yet — the probe has not run on a car display.")
+                appendLine()
+                append(instructions())
+            } else {
+                append(carReport)
+            }
+        }
+        reportView.text = report
     }
 
     private fun withReport(action: (String) -> Unit) {
-        val current = report
-        if (current == null) {
-            Toast.makeText(this, "No report yet — run the probe on the car first", Toast.LENGTH_LONG)
-                .show()
-            return
-        }
-        action(current)
+        report?.let(action)
     }
 
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
