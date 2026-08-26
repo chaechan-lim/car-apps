@@ -13,6 +13,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import dev.carapps.probe.core.ReportExport
 import dev.carapps.probe.core.ReportStore
+import dev.carapps.probe.core.padForSystemBars
 
 /**
  * Sideload-and-look diagnostic. Renders the full CarPropertyManager scan so the
@@ -77,6 +78,7 @@ class PropertyDumpActivity : AppCompatActivity() {
             )
         }
 
+        root.padForSystemBars()
         setContentView(root)
 
         requestMissingPermissions()

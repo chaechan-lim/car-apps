@@ -25,7 +25,7 @@
         android:allowBackup="false"
         android:icon="@android:drawable/ic_menu_info_details"
         android:label="@string/app_name"
-        android:theme="@style/Theme.AppCompat.DayNight">
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
 
         <!--
           Required. Without it the host refuses to bind with "Min API level not

@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import dev.carapps.probe.core.ReportExport
 import dev.carapps.probe.core.ReportStore
+import dev.carapps.probe.core.padForSystemBars
 
 /**
  * Phone-side companion. The probe runs on the car display; this screen exists to
@@ -70,6 +71,7 @@ class PhoneActivity : AppCompatActivity() {
             )
         }
 
+        root.padForSystemBars()
         setContentView(root)
     }
 
