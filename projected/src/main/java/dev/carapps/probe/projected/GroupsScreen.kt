@@ -33,7 +33,13 @@ class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycl
 
     override fun onStart(owner: LifecycleOwner) {
         ProbeController.addListener(onProbeUpdate)
-        requestCarPermissionsThenStart()
+        // Start before asking for permissions, not after. Gating the probe on the
+        // permission callback meant that if the prompt was never answered — it
+        // appears on the phone, which the driver may not be looking at — nothing
+        // ever emitted a snapshot and the car screen sat on a spinner forever.
+        // Starting first seeds every field as "waiting", so there is always a list.
+        ProbeController.start(carContext)
+        requestCarPermissions()
     }
 
     override fun onStop(owner: LifecycleOwner) {
@@ -79,14 +85,34 @@ class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycl
         val groups = snapshot.fields.groupBy { it.group }
         val listBuilder = ItemList.Builder()
 
-        groups.entries.take(limit).forEach { (group, fields) ->
-            val available = fields.count { it.status == FieldStatus.SUCCESS }
+        // One row short of the limit when truncating, so the last row can say so
+        // rather than a group vanishing without trace.
+        val truncated = groups.size > limit
+        val shown = if (truncated) limit - 1 else groups.size
+
+        groups.entries.take(shown).forEach { (group, fields) ->
+            val given = fields.count { it.status == FieldStatus.SUCCESS }
+            val waiting = fields.count { it.status == FieldStatus.NOT_PROBED }
+            val summary = if (waiting > 0) {
+                "$given given · $waiting waiting"
+            } else {
+                "$given of ${fields.size} given"
+            }
             listBuilder.addItem(
                 Row.Builder()
                     .setTitle(group)
-                    .addText("$available / ${fields.size} available")
+                    .addText(summary)
                     .setBrowsable(true)
                     .setOnClickListener { screenManager.push(FieldsScreen(carContext, group)) }
+                    .build()
+            )
+        }
+
+        if (truncated) {
+            listBuilder.addItem(
+                Row.Builder()
+                    .setTitle("${groups.size - shown} more group(s)")
+                    .addText("This host caps the list — tap Log for the full report")
                     .build()
             )
         }
@@ -94,7 +120,7 @@ class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycl
         return ListTemplate.Builder()
             .setHeader(
                 Header.Builder()
-                    .setTitle("${snapshot.availableCount} / ${snapshot.fields.size} available")
+                    .setTitle(snapshot.verdict)
                     .setStartHeaderAction(Action.APP_ICON)
                     .addEndHeaderAction(
                         Action.Builder()
@@ -129,7 +155,7 @@ class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycl
         ).show()
     }
 
-    private fun requestCarPermissionsThenStart() {
+    private fun requestCarPermissions() {
         if (carContext.carAppApiLevel < REQUIRED_API_LEVEL) {
             Log.w(TAG, "host is API level ${carContext.carAppApiLevel}, skipping probe")
             return
@@ -143,9 +169,8 @@ class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycl
         // Android Auto surfaces this prompt on the phone, not the head unit.
         carContext.requestPermissions(permissions) { granted, rejected ->
             Log.i(TAG, "permissions granted=$granted rejected=$rejected")
-            // Start regardless: a rejected permission is itself a result worth
-            // seeing, and it shows up as UNAVAILABLE rather than a crash.
-            ProbeController.start(carContext)
+            // The probe is already running; a granted permission simply makes more
+            // fields start answering. A rejected one is a result in itself.
             invalidate()
         }
     }

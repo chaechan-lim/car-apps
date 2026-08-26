@@ -26,6 +26,17 @@ enum class FieldStatus(val display: String) {
     UNKNOWN("? UNKNOWN"),
     UNIMPLEMENTED("∅ UNIMPLEMENTED"),
     NOT_PROBED("… waiting"),
+
+    /**
+     * The host never called back at all, even to say unavailable. Distinct from
+     * UNAVAILABLE, which is an answer — this is silence, and without a deadline it
+     * is indistinguishable from a probe that is still running.
+     */
+    NO_RESPONSE("✖ NO RESPONSE"),
+
+    /** Needs a newer Car App API level than this host offers. */
+    UNSUPPORTED_HOST("— needs newer host"),
+
     ERROR("! ERROR"),
 }
 
@@ -35,10 +46,23 @@ data class ProbeSnapshot(
     val fields: List<CarField>,
 ) {
     val availableCount: Int get() = fields.count { it.status == FieldStatus.SUCCESS }
+    val pendingCount: Int get() = fields.count { it.status == FieldStatus.NOT_PROBED }
+
+    /** One line that answers "did this car give the data or not". */
+    val verdict: String
+        get() {
+            val refused = fields.count {
+                it.status == FieldStatus.UNAVAILABLE ||
+                    it.status == FieldStatus.UNIMPLEMENTED ||
+                    it.status == FieldStatus.NO_RESPONSE
+            }
+            return "$availableCount given · $refused not given" +
+                if (pendingCount > 0) " · $pendingCount waiting" else ""
+        }
 
     fun toReport(): String = buildString {
         appendLine("# Car data probe — $platform")
-        appendLine("# $availableCount / ${fields.size} fields available")
+        appendLine("# $verdict")
         appendLine()
         var lastGroup = ""
         for (field in fields) {

@@ -1,5 +1,7 @@
 package dev.carapps.probe.core
 
+import android.os.Handler
+import android.os.Looper
 import androidx.car.app.CarContext
 import androidx.car.app.hardware.CarHardwareManager
 import androidx.car.app.hardware.common.CarValue
@@ -10,6 +12,7 @@ import androidx.car.app.hardware.info.CarSensors
 import androidx.car.app.hardware.info.Compass
 import androidx.car.app.hardware.info.EnergyLevel
 import androidx.car.app.hardware.info.EnergyProfile
+import androidx.car.app.hardware.info.EvStatus
 import androidx.car.app.hardware.info.Gyroscope
 import androidx.car.app.hardware.info.Mileage
 import androidx.car.app.hardware.info.Model
@@ -41,6 +44,7 @@ class CarAppLibraryProbe(
     private val onSnapshot: (ProbeSnapshot) -> Unit,
 ) {
     private val fields = linkedMapOf<String, CarField>()
+    private val timeoutHandler = Handler(Looper.getMainLooper())
     private var started = false
 
     private val carHardware: CarHardwareManager
@@ -95,6 +99,12 @@ class CarAppLibraryProbe(
         emit()
     }
 
+    private val evStatusListener = OnCarDataAvailableListener<EvStatus> { data ->
+        put(GROUP_EV, "evChargePortOpen", data.evChargePortOpen)
+        put(GROUP_EV, "evChargePortConnected", data.evChargePortConnected)
+        emit()
+    }
+
     fun start() {
         if (started) return
         started = true
@@ -117,28 +127,59 @@ class CarAppLibraryProbe(
             emit()
         }
 
+        // ExteriorDimensions needs a newer host than the rest; say so rather than
+        // leaving the row looking like the car declined to answer.
+        if (carContext.carAppApiLevel >= EXTERIOR_DIMENSIONS_API_LEVEL) {
+            carInfo.fetchExteriorDimensions(executor) { data ->
+                put(GROUP_MODEL, "exteriorDimensions", data.exteriorDimensions, "mm")
+                emit()
+            }
+        } else {
+            mark(GROUP_MODEL, "exteriorDimensions", FieldStatus.UNSUPPORTED_HOST)
+        }
+
         // Continuous listeners.
         carInfo.addEnergyLevelListener(executor, energyLevelListener)
         carInfo.addSpeedListener(executor, speedListener)
         carInfo.addMileageListener(executor, mileageListener)
         carInfo.addTollListener(executor, tollListener)
+        carInfo.addEvStatusListener(executor, evStatusListener)
 
         val sensors = carHardware.carSensors
         sensors.addAccelerometerListener(CarSensors.UPDATE_RATE_NORMAL, executor, accelerometerListener)
         sensors.addGyroscopeListener(CarSensors.UPDATE_RATE_NORMAL, executor, gyroscopeListener)
         sensors.addCompassListener(CarSensors.UPDATE_RATE_NORMAL, executor, compassListener)
         sensors.addCarHardwareLocationListener(CarSensors.UPDATE_RATE_NORMAL, executor, locationListener)
+
+        // Nothing obliges the host to answer, and several fields on a typical car
+        // never do. Without a deadline those rows sit on "waiting" forever, which
+        // reads as the app hanging rather than as the car declining.
+        timeoutHandler.postDelayed(::markSilentFields, RESPONSE_DEADLINE_MS)
+    }
+
+    /** Turns "still waiting" into a stated result once the deadline passes. */
+    private fun markSilentFields() {
+        var changed = false
+        fields.entries.forEach { (key, field) ->
+            if (field.status == FieldStatus.NOT_PROBED) {
+                fields[key] = field.copy(status = FieldStatus.NO_RESPONSE)
+                changed = true
+            }
+        }
+        if (changed) emit()
     }
 
     fun stop() {
         if (!started) return
         started = false
+        timeoutHandler.removeCallbacksAndMessages(null)
 
         val carInfo = carHardware.carInfo
         carInfo.removeEnergyLevelListener(energyLevelListener)
         carInfo.removeSpeedListener(speedListener)
         carInfo.removeMileageListener(mileageListener)
         carInfo.removeTollListener(tollListener)
+        carInfo.removeEvStatusListener(evStatusListener)
 
         val sensors = carHardware.carSensors
         sensors.removeAccelerometerListener(accelerometerListener)
@@ -162,6 +203,9 @@ class CarAppLibraryProbe(
         seed(GROUP_MODEL, "year")
         seed(GROUP_MODEL, "evConnectorTypes")
         seed(GROUP_MODEL, "fuelTypes")
+        seed(GROUP_MODEL, "exteriorDimensions", "mm")
+        seed(GROUP_EV, "evChargePortOpen")
+        seed(GROUP_EV, "evChargePortConnected")
         seed(GROUP_ENERGY, "batteryPercent", "%")
         seed(GROUP_ENERGY, "fuelPercent", "%")
         seed(GROUP_ENERGY, "rangeRemainingMeters", "m")
@@ -192,6 +236,11 @@ class CarAppLibraryProbe(
         )
     }
 
+    private fun mark(group: String, name: String, status: FieldStatus) {
+        val key = "$group/$name"
+        fields[key]?.let { fields[key] = it.copy(status = status) }
+    }
+
     private fun emit() {
         onSnapshot(ProbeSnapshot(platform = platformLabel(), fields = fields.values.toList()))
     }
@@ -208,7 +257,12 @@ class CarAppLibraryProbe(
     private companion object {
         const val FEATURE_AUTOMOTIVE = "android.hardware.type.automotive"
 
+        /** fetchExteriorDimensions was added at Car App API level 7. */
+        const val EXTERIOR_DIMENSIONS_API_LEVEL = 7
+        const val RESPONSE_DEADLINE_MS = 12_000L
+
         const val GROUP_MODEL = "Model / EnergyProfile"
+        const val GROUP_EV = "EvStatus"
         const val GROUP_ENERGY = "EnergyLevel"
         const val GROUP_SPEED = "Speed"
         const val GROUP_MILEAGE = "Mileage"
