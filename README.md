@@ -159,21 +159,30 @@ it — a Play Console account will fix that. If it does *not* appear in the DHU
 either, the app has a real defect and paying for Play distribution would not have
 helped. Run this before spending the $25.
 
-**Google Play Internal App Sharing** — the reliable way into a real vehicle, and
-the route this project ended up needing. Two steps are easy to miss:
+**Google Play internal testing track** — the reliable way into a real vehicle, and
+the route this project needed.
 
-- **Enable it on the phone.** Play Store → Settings → About → tap the Play Store
-  version **7 times** → turn on **Internal app sharing**. Without this the link
-  installs nothing. It is a hidden menu, much like Android Auto's own.
-- **Uninstall the sideloaded build first.** Uploads may be signed with any key
-  because Google re-signs them with its own internal-sharing certificate, so the
-  installed signature changes and an in-place update fails with
-  `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
+Go straight here rather than to Internal App Sharing. That page refuses a package
+it has never seen — *"you don't have permission to use internal app sharing …
+you must first publish the app"* — so it is for later builds of an app that
+already exists, not for getting one off the ground.
 
-An APK is fine; no bundle needed. Links allow 100 downloads and expire after 60
-days.
+Internal testing is also the lightest track: it is the one exemption from the Data
+safety form, so no privacy policy or content rating is needed while testing stays
+internal.
 
-**Internal Test Track** — same effect, more setup. Upload an APK, get a link, install from it. Neither track
+1. Play Console → **Create app**.
+2. **Testing → Internal testing → Create new release**.
+3. Upload the release APK. This is what registers the package name to the account.
+4. Add a tester list containing your own Google account.
+5. Review and roll out.
+6. Open the opt-in link on the phone and join, *then* install from Play. Skipping
+   the opt-in leaves the store claiming the item does not exist.
+
+**Uninstall the sideloaded build first.** Play re-signs uploads, so the signature
+changes and an in-place update fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
+
+An APK is fine; no bundle needed. Upload an APK, get a link, install from it. Neither track
 goes through form-factor review and the 12-testers/14-days rule applies to
 production only, so turnaround is an upload rather than a submission. Needs a Play
 Console account: $25 once, non-refundable, plus identity verification. Sharing
