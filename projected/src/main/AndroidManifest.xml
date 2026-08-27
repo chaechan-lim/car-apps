@@ -23,7 +23,7 @@
 
     <application
         android:allowBackup="false"
-        android:icon="@android:drawable/ic_menu_info_details"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
 
@@ -58,7 +58,7 @@
         <service
             android:name=".ProbeCarAppService"
             android:exported="true"
-            android:icon="@android:drawable/ic_menu_info_details"
+            android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name">
             <!--
               One category, and the honest one. v0.1.2 also declared POI as a hedge
