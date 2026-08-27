@@ -88,6 +88,13 @@ builds accept any host (`ALLOW_ALL_HOSTS_VALIDATOR`); the release build accepts 
 **First check how it was installed.** If the APK was sideloaded, that is the
 answer — see the box above — and no manifest change will help.
 
+This was settled by experiment rather than argument, and the sequence is worth
+keeping: the app appears in the **DHU**, does not appear in a real car when
+sideloaded, and still does not appear when `adb install -i com.android.vending`
+forges the installer name. App sound, distribution blocked. Run the DHU check
+first on any future "it does not show up" — it separates the two explanations in
+one attempt, where reading the manifest separates nothing.
+
 Installed from a trusted source and still missing? Then, in order:
 
 1. **`androidx.car.app.minCarApiLevel` missing from the manifest.** The host refuses
@@ -152,8 +159,21 @@ it — a Play Console account will fix that. If it does *not* appear in the DHU
 either, the app has a real defect and paying for Play distribution would not have
 helped. Run this before spending the $25.
 
-**Google Play Internal App Sharing** or an **Internal Test Track** — the reliable
-way into a real vehicle. Upload an APK, get a link, install from it. Neither track
+**Google Play Internal App Sharing** — the reliable way into a real vehicle, and
+the route this project ended up needing. Two steps are easy to miss:
+
+- **Enable it on the phone.** Play Store → Settings → About → tap the Play Store
+  version **7 times** → turn on **Internal app sharing**. Without this the link
+  installs nothing. It is a hidden menu, much like Android Auto's own.
+- **Uninstall the sideloaded build first.** Uploads may be signed with any key
+  because Google re-signs them with its own internal-sharing certificate, so the
+  installed signature changes and an in-place update fails with
+  `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
+
+An APK is fine; no bundle needed. Links allow 100 downloads and expire after 60
+days.
+
+**Internal Test Track** — same effect, more setup. Upload an APK, get a link, install from it. Neither track
 goes through form-factor review and the 12-testers/14-days rule applies to
 production only, so turnaround is an upload rather than a submission. Needs a Play
 Console account: $25 once, non-refundable, plus identity verification. Sharing
