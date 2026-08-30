@@ -33,8 +33,10 @@ jobs:
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
           "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Build APKs
-        run: ./gradlew :projected:assembleRelease :projected:assembleDebug
+      # The bundle is what Play needs: new apps cannot be published as an APK.
+      # The APKs stay for the DHU and for direct installs.
+      - name: Build APKs and bundle
+        run: ./gradlew :projected:assembleRelease :projected:assembleDebug :projected:bundleRelease
 
       - name: Verify release signature
         run: |
@@ -51,6 +53,8 @@ jobs:
              "out/car-probe-auto-$TAG-release.apk"
           cp projected/build/outputs/apk/debug/projected-debug.apk \
              "out/car-probe-auto-$TAG-debug.apk"
+          cp projected/build/outputs/bundle/release/projected-release.aab \
+             "out/car-probe-auto-$TAG.aab"
           ls -la out
 
       # gh is preinstalled on the runner, so publishing needs no extra action.
@@ -61,9 +65,9 @@ jobs:
         run: |
           TAG="${{ steps.stage.outputs.tag }}"
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" out/*.apk --clobber
+            gh release upload "$TAG" out/* --clobber
           else
-            gh release create "$TAG" out/*.apk \
+            gh release create "$TAG" out/* \
               --title "Car Probe $TAG" \
               --notes-file .github/release-notes.md
           fi

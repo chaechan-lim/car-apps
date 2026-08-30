@@ -179,10 +179,13 @@ internal.
 6. Open the opt-in link on the phone and join, *then* install from Play. Skipping
    the opt-in leaves the store claiming the item does not exist.
 
-**Uninstall the sideloaded build first.** Play re-signs uploads, so the signature
-changes and an in-place update fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
+**Upload the `.aab`, not an APK.** New apps cannot be published to Play as APKs,
+so releases carry a bundle alongside them. In the Console it goes under
+*Internal testing → Create new release → App bundles*. The APKs remain the right
+choice for the DHU and for direct installs, where a bundle is no use.
 
-An APK is fine; no bundle needed. Upload an APK, get a link, install from it. Neither track
+**Uninstall the sideloaded build first.** Play re-signs uploads, so the signature
+changes and an in-place update fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. Upload an APK, get a link, install from it. Neither track
 goes through form-factor review and the 12-testers/14-days rule applies to
 production only, so turnaround is an upload rather than a submission. Needs a Play
 Console account: $25 once, non-refundable, plus identity verification. Sharing

@@ -2,8 +2,9 @@ Android Auto vehicle data probe. Install on a **phone**, not the car.
 
 | Asset | Use |
 |---|---|
-| `*-release.apk` | Start here |
-| `*-debug.apk` | Fallback if the app never appears in the car launcher |
+| `*.aab` | Upload to Play — internal testing track, the only route into a real car |
+| `*-release.apk` | Desktop Head Unit, or direct install |
+| `*-debug.apk` | Same, but accepts any host |
 
 > **Sideloading these APKs into a real car does not work.** Android Auto only runs
 > templated apps installed from a trusted source, and its **Unknown sources**
