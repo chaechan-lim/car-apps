@@ -45,6 +45,7 @@ class CarAppLibraryProbe(
 ) {
     private val fields = linkedMapOf<String, CarField>()
     private val timeoutHandler = Handler(Looper.getMainLooper())
+    private var emitScheduled = false
     private var started = false
 
     private val carHardware: CarHardwareManager
@@ -110,7 +111,7 @@ class CarAppLibraryProbe(
         started = true
 
         seedPlaceholders()
-        emit()
+        emitNow()
 
         val carInfo = carHardware.carInfo
 
@@ -173,6 +174,7 @@ class CarAppLibraryProbe(
         if (!started) return
         started = false
         timeoutHandler.removeCallbacksAndMessages(null)
+        emitScheduled = false
 
         val carInfo = carHardware.carInfo
         carInfo.removeEnergyLevelListener(energyLevelListener)
@@ -241,7 +243,26 @@ class CarAppLibraryProbe(
         fields[key]?.let { fields[key] = it.copy(status = status) }
     }
 
+    /**
+     * Coalesces updates instead of publishing one per callback.
+     *
+     * Speed and the motion sensors fire many times a second, and forwarding each
+     * one drove a redraw of the car screen that fast, which is not just wasteful —
+     * a list rebuilding continuously never stays still long enough to be tapped.
+     */
     private fun emit() {
+        if (emitScheduled) return
+        emitScheduled = true
+        timeoutHandler.postDelayed(
+            {
+                emitScheduled = false
+                emitNow()
+            },
+            EMIT_INTERVAL_MS,
+        )
+    }
+
+    private fun emitNow() {
         onSnapshot(ProbeSnapshot(platform = platformLabel(), fields = fields.values.toList()))
     }
 
@@ -260,6 +281,7 @@ class CarAppLibraryProbe(
         /** fetchExteriorDimensions was added at Car App API level 7. */
         const val EXTERIOR_DIMENSIONS_API_LEVEL = 7
         const val RESPONSE_DEADLINE_MS = 12_000L
+        const val EMIT_INTERVAL_MS = 1_000L
 
         const val GROUP_MODEL = "Model / EnergyProfile"
         const val GROUP_EV = "EvStatus"

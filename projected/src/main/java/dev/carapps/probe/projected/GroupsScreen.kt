@@ -25,7 +25,24 @@ import dev.carapps.probe.core.ReportStore
  */
 class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
 
-    private val onProbeUpdate: () -> Unit = { invalidate() }
+    private var lastSignature: String? = null
+
+    /**
+     * Redraws only when a status changes, not when a value does.
+     *
+     * This screen shows counts, and those settle within seconds — but speed and the
+     * motion sensors keep reporting new readings indefinitely. Invalidating on every
+     * one of those rebuilt the list continuously, and a list that never holds still
+     * cannot be tapped into.
+     */
+    private val onProbeUpdate: () -> Unit = {
+        val signature = ProbeController.snapshot?.fields
+            ?.joinToString("|") { "${it.group}/${it.name}=${it.status.name}" }
+        if (signature != lastSignature) {
+            lastSignature = signature
+            invalidate()
+        }
+    }
 
     init {
         lifecycle.addObserver(this)
