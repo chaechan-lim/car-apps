@@ -8,6 +8,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import dev.carapps.probe.core.CrashLog
 import dev.carapps.probe.core.ReportExport
 import dev.carapps.probe.core.ReportStore
 import dev.carapps.probe.core.padForSystemBars
@@ -80,9 +81,18 @@ class PhoneActivity : AppCompatActivity() {
         // The self-check needs no car, so there is always something to send — the
         // case worth reporting is usually the one where the probe never ran.
         val carReport = ReportStore(this).read()
+        val crash = CrashLog.read(this)
         report = buildString {
             append(ReportExport.environmentHeader(this@PhoneActivity))
             appendLine()
+            // First, because a crash explains everything below it and nothing below
+            // it explains the crash.
+            if (crash != null) {
+                appendLine("## LAST CRASH")
+                appendLine()
+                appendLine(crash)
+                appendLine()
+            }
             append(SelfCheck.run(this@PhoneActivity))
             appendLine()
             appendLine()

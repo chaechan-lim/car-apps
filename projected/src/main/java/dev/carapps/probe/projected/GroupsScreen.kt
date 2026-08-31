@@ -33,6 +33,13 @@ class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycl
 
     override fun onStart(owner: LifecycleOwner) {
         ProbeController.addListener(onProbeUpdate)
+        // Anything thrown here reaches the host as an app crash, and a diagnostic
+        // that dies on startup reports nothing at all.
+        runCatching { startProbe() }
+            .onFailure { Log.e(TAG, "probe start failed", it) }
+    }
+
+    private fun startProbe() {
         // Start before asking for permissions, not after. Gating the probe on the
         // permission callback meant that if the prompt was never answered — it
         // appears on the phone, which the driver may not be looking at — nothing
@@ -50,7 +57,27 @@ class GroupsScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycl
         ProbeController.stop()
     }
 
-    override fun onGetTemplate(): Template {
+    /**
+     * A template the host rejects takes the whole app down, and on a car screen that
+     * looks like nothing at all — it just returns to the launcher. Showing the
+     * failure instead turns a silent crash into a readable one, which for a
+     * diagnostic tool is the more useful outcome.
+     */
+    override fun onGetTemplate(): Template = try {
+        buildTemplate()
+    } catch (t: Throwable) {
+        Log.e(TAG, "template build failed", t)
+        MessageTemplate.Builder("${t.javaClass.simpleName}: ${t.message}")
+            .setHeader(
+                Header.Builder()
+                    .setTitle("Template error")
+                    .setStartHeaderAction(Action.APP_ICON)
+                    .build()
+            )
+            .build()
+    }
+
+    private fun buildTemplate(): Template {
         // CarHardwareManager arrived in Car App API level 3. The manifest declares
         // level 1 so that older hosts still launch the app and can report this,
         // rather than filtering it out of the launcher with no explanation.
