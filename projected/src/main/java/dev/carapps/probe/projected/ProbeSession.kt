@@ -5,5 +5,5 @@ import androidx.car.app.Screen
 import androidx.car.app.Session
 
 class ProbeSession : Session() {
-    override fun onCreateScreen(intent: Intent): Screen = GroupsScreen(carContext)
+    override fun onCreateScreen(intent: Intent): Screen = RootScreen(carContext)
 }
