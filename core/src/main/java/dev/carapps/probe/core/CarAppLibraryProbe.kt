@@ -176,18 +176,23 @@ class CarAppLibraryProbe(
         timeoutHandler.removeCallbacksAndMessages(null)
         emitScheduled = false
 
+        // Unsubscribing from a property the host never supported throws
+        // IllegalArgumentException, and this runs during onUnbind — so one
+        // unsupported property took the whole process down every time the car
+        // disconnected. Subscribing to the same property fails silently, which is
+        // why the asymmetry is invisible until teardown.
         val carInfo = carHardware.carInfo
-        carInfo.removeEnergyLevelListener(energyLevelListener)
-        carInfo.removeSpeedListener(speedListener)
-        carInfo.removeMileageListener(mileageListener)
-        carInfo.removeTollListener(tollListener)
-        carInfo.removeEvStatusListener(evStatusListener)
+        detach { carInfo.removeEnergyLevelListener(energyLevelListener) }
+        detach { carInfo.removeSpeedListener(speedListener) }
+        detach { carInfo.removeMileageListener(mileageListener) }
+        detach { carInfo.removeTollListener(tollListener) }
+        detach { carInfo.removeEvStatusListener(evStatusListener) }
 
         val sensors = carHardware.carSensors
-        sensors.removeAccelerometerListener(accelerometerListener)
-        sensors.removeGyroscopeListener(gyroscopeListener)
-        sensors.removeCompassListener(compassListener)
-        sensors.removeCarHardwareLocationListener(locationListener)
+        detach { sensors.removeAccelerometerListener(accelerometerListener) }
+        detach { sensors.removeGyroscopeListener(gyroscopeListener) }
+        detach { sensors.removeCompassListener(compassListener) }
+        detach { sensors.removeCarHardwareLocationListener(locationListener) }
     }
 
     /**
@@ -236,6 +241,11 @@ class CarAppLibraryProbe(
             value = carValue.value?.render() ?: "—",
             note = note.ifEmpty { existing?.note.orEmpty() },
         )
+    }
+
+    /** Teardown must not throw: it runs inside onUnbind, where anything raised kills the process. */
+    private fun detach(block: () -> Unit) {
+        runCatching(block)
     }
 
     private fun mark(group: String, name: String, status: FieldStatus) {
