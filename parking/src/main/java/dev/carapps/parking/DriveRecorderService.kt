@@ -130,6 +130,8 @@ class DriveRecorderService : android.app.Service(), LocationListener {
             // is the one at the parked spot.
             wifi = fingerprint.capture(),
             connectedWifi = fingerprint.connectedNetwork(),
+            wifiScanAgeSeconds = fingerprint.scanAgeSeconds(),
+            cells = CellFingerprint(this).capture(),
         )
         EventStore(this).add(event)
         Log.i(TAG, "recorded ${samples.size} samples, drop=${event.pressureDropHpa}")

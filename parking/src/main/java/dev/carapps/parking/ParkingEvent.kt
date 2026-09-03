@@ -29,8 +29,17 @@ data class ParkingEvent(
     /** BSSID -> level(dBm) at the moment of parking. The return-visit fingerprint. */
     val wifi: Map<String, Int>,
 
-    /** The network the phone was joined to, which often names the building outright. */
+    /** The network the phone was joined to, if any reached the parking level. */
     val connectedWifi: String?,
+
+    /** How stale the Wi-Fi scan was, so a fingerprint taken above ground is detectable. */
+    val wifiScanAgeSeconds: Long?,
+
+    /**
+     * Cell id -> dBm. The footprint that survives underground in Korea, where
+     * garages carry carrier repeaters but neither satellites nor home Wi-Fi.
+     */
+    val cells: Map<String, Int>,
 
     /** Ground truth, entered by hand afterwards. Null until then. */
     val actualFloor: String? = null,
@@ -81,6 +90,8 @@ data class ParkingEvent(
         )
         put("wifi", JSONObject().apply { wifi.forEach { (bssid, level) -> put(bssid, level) } })
         put("connectedWifi", connectedWifi ?: JSONObject.NULL)
+        put("wifiScanAgeSeconds", wifiScanAgeSeconds ?: JSONObject.NULL)
+        put("cells", JSONObject().apply { cells.forEach { (id, dbm) -> put(id, dbm) } })
     }
 
     companion object {
@@ -111,6 +122,11 @@ data class ParkingEvent(
                 wifi = wifiJson.keys().asSequence().associateWith { wifiJson.getInt(it) },
                 connectedWifi = if (json.isNull("connectedWifi")) null
                 else json.getString("connectedWifi"),
+                wifiScanAgeSeconds = if (json.isNull("wifiScanAgeSeconds")) null
+                else json.getLong("wifiScanAgeSeconds"),
+                cells = (json.optJSONObject("cells") ?: JSONObject()).let { cellJson ->
+                    cellJson.keys().asSequence().associateWith { cellJson.getInt(it) }
+                },
                 actualFloor = if (json.isNull("actualFloor")) null else json.getString("actualFloor"),
             )
         }

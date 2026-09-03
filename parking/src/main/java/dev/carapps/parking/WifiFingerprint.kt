@@ -29,13 +29,27 @@ class WifiFingerprint(private val context: Context) {
     }.getOrDefault(emptyMap())
 
     /**
+     * Age of the freshest scan result, in seconds.
+     *
+     * The platform throttles scans, so these results can predate the descent — a
+     * fingerprint taken from the street above would look like a basement one and
+     * quietly poison the data. Recording the age makes that detectable instead.
+     */
+    fun scanAgeSeconds(): Long? = runCatching {
+        val manager = context.applicationContext
+            .getSystemService(Context.WIFI_SERVICE) as WifiManager
+        @Suppress("DEPRECATION")
+        val newest = manager.scanResults.maxOfOrNull { it.timestamp } ?: return null
+        (android.os.SystemClock.elapsedRealtime() * 1000 - newest) / 1_000_000
+    }.getOrNull()
+
+    /**
      * The network the phone is actually joined to, if any.
      *
-     * Worth recording separately from the scan: in a home garage the phone often
-     * still holds the house network, and being joined to a known SSID identifies
-     * the building more firmly than a GPS fix taken before the ramp. An office
-     * garage answers with a different network or none, which is itself the
-     * distinction.
+     * Usually null in a Korean apartment garage: those are large shared structures
+     * and household networks do not reach the parking levels. Kept because an
+     * office garage sometimes does have coverage, and because a null is itself a
+     * distinguishing observation between the two sites.
      */
     fun connectedNetwork(): String? = runCatching {
         val manager = context.applicationContext

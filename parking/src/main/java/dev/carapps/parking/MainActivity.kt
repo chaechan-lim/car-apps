@@ -101,8 +101,9 @@ class MainActivity : AppCompatActivity() {
                 appendLine("  floors down  : ${format(event.estimatedFloorsDown)}")
                 appendLine("  yaw          : ${event.yawDegrees.toInt()}° (${ramps(event.yawDegrees)})")
                 appendLine("  samples      : ${event.pressureSamples.size}")
-                appendLine("  wifi APs     : ${event.wifi.size}")
+                appendLine("  wifi APs     : ${event.wifi.size} (scan ${event.wifiScanAgeSeconds ?: "?"}s old)")
                 appendLine("  joined wifi  : ${event.connectedWifi ?: "none"}")
+                appendLine("  cells        : ${event.cells.size}")
                 appendLine("  last fix     : ${fix(event)}")
             }
         }
