@@ -29,6 +29,9 @@ data class ParkingEvent(
     /** BSSID -> level(dBm) at the moment of parking. The return-visit fingerprint. */
     val wifi: Map<String, Int>,
 
+    /** The network the phone was joined to, which often names the building outright. */
+    val connectedWifi: String?,
+
     /** Ground truth, entered by hand afterwards. Null until then. */
     val actualFloor: String? = null,
 ) {
@@ -77,6 +80,7 @@ data class ParkingEvent(
             },
         )
         put("wifi", JSONObject().apply { wifi.forEach { (bssid, level) -> put(bssid, level) } })
+        put("connectedWifi", connectedWifi ?: JSONObject.NULL)
     }
 
     companion object {
@@ -105,6 +109,8 @@ data class ParkingEvent(
                 secondsSinceLastFix = if (json.isNull("secondsSinceLastFix")) null
                 else json.getLong("secondsSinceLastFix"),
                 wifi = wifiJson.keys().asSequence().associateWith { wifiJson.getInt(it) },
+                connectedWifi = if (json.isNull("connectedWifi")) null
+                else json.getString("connectedWifi"),
                 actualFloor = if (json.isNull("actualFloor")) null else json.getString("actualFloor"),
             )
         }

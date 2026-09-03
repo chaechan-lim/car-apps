@@ -74,19 +74,35 @@ class DriveRecorderService : android.app.Service(), LocationListener {
             return
         }
         val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        runCatching {
-            manager.requestLocationUpdates(
-                LocationManager.GPS_PROVIDER,
-                LOCATION_INTERVAL_MS,
-                LOCATION_DISTANCE_M,
-                this,
-            )
-        }.onFailure { Log.w(TAG, "location unavailable", it) }
+        // Both providers. Satellites alone can take a while to fix in a city and
+        // may never fix on a short hop between two underground garages — which is
+        // precisely the trip this has to tell apart. The network provider is coarse
+        // but answers the only question asked of it: which building.
+        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).forEach { provider ->
+            runCatching {
+                manager.requestLocationUpdates(
+                    provider,
+                    LOCATION_INTERVAL_MS,
+                    LOCATION_DISTANCE_M,
+                    this,
+                )
+            }.onFailure { Log.w(TAG, "provider $provider unavailable", it) }
+        }
     }
 
     override fun onLocationChanged(location: Location) {
-        lastFix = location
-        lastFixAtElapsed = SystemClock.elapsedRealtime()
+        // Keep the better fix rather than the newest: a coarse network update
+        // arriving after the car is already inside would otherwise overwrite the
+        // sharp street-level fix taken on the way in.
+        val current = lastFix
+        val staleness = SystemClock.elapsedRealtime() - lastFixAtElapsed
+        val replace = current == null ||
+            location.accuracy <= current.accuracy ||
+            staleness > FIX_STALE_MS
+        if (replace) {
+            lastFix = location
+            lastFixAtElapsed = SystemClock.elapsedRealtime()
+        }
     }
 
     private fun finishRecording() {
@@ -98,6 +114,7 @@ class DriveRecorderService : android.app.Service(), LocationListener {
                 .removeUpdates(this)
         }
 
+        val fingerprint = WifiFingerprint(this)
         val event = ParkingEvent(
             id = System.currentTimeMillis(),
             startedAt = startedAtWall,
@@ -111,7 +128,8 @@ class DriveRecorderService : android.app.Service(), LocationListener {
             else (SystemClock.elapsedRealtime() - lastFixAtElapsed) / 1000,
             // Captured here rather than during the drive: the fingerprint that matters
             // is the one at the parked spot.
-            wifi = WifiFingerprint(this).capture(),
+            wifi = fingerprint.capture(),
+            connectedWifi = fingerprint.connectedNetwork(),
         )
         EventStore(this).add(event)
         Log.i(TAG, "recorded ${samples.size} samples, drop=${event.pressureDropHpa}")
@@ -193,6 +211,7 @@ class DriveRecorderService : android.app.Service(), LocationListener {
         private const val PARKED_NOTIFICATION_ID = 2
         private const val LOCATION_INTERVAL_MS = 10_000L
         private const val LOCATION_DISTANCE_M = 20f
+        private const val FIX_STALE_MS = 60_000L
 
         fun start(context: Context) = send(context, ACTION_START)
         fun stop(context: Context) = send(context, ACTION_STOP)

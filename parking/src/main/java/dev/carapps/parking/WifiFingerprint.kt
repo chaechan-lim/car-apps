@@ -28,6 +28,28 @@ class WifiFingerprint(private val context: Context) {
             .associate { it.BSSID to it.level }
     }.getOrDefault(emptyMap())
 
+    /**
+     * The network the phone is actually joined to, if any.
+     *
+     * Worth recording separately from the scan: in a home garage the phone often
+     * still holds the house network, and being joined to a known SSID identifies
+     * the building more firmly than a GPS fix taken before the ramp. An office
+     * garage answers with a different network or none, which is itself the
+     * distinction.
+     */
+    fun connectedNetwork(): String? = runCatching {
+        val manager = context.applicationContext
+            .getSystemService(Context.WIFI_SERVICE) as WifiManager
+        @Suppress("DEPRECATION")
+        val info = manager.connectionInfo ?: return null
+        val bssid = info.bssid ?: return null
+        // The platform hands back this placeholder when it will not disclose the AP.
+        if (bssid == "02:00:00:00:00:00") return null
+        @Suppress("DEPRECATION")
+        val ssid = info.ssid?.trim('"').orEmpty()
+        if (ssid.isEmpty() || ssid == "<unknown ssid>") bssid else "$ssid ($bssid)"
+    }.getOrNull()
+
     private companion object {
         /** Enough to identify a spot; beyond this the weak tail is mostly noise. */
         const val MAX_APS = 25

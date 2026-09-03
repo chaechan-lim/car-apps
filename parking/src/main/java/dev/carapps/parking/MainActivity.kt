@@ -102,6 +102,7 @@ class MainActivity : AppCompatActivity() {
                 appendLine("  yaw          : ${event.yawDegrees.toInt()}° (${ramps(event.yawDegrees)})")
                 appendLine("  samples      : ${event.pressureSamples.size}")
                 appendLine("  wifi APs     : ${event.wifi.size}")
+                appendLine("  joined wifi  : ${event.connectedWifi ?: "none"}")
                 appendLine("  last fix     : ${fix(event)}")
             }
         }
