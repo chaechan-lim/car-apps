@@ -36,7 +36,9 @@ jobs:
       # The bundle is what Play needs: new apps cannot be published as an APK.
       # The APKs stay for the DHU and for direct installs.
       - name: Build APKs and bundle
-        run: ./gradlew :projected:assembleRelease :projected:assembleDebug :projected:bundleRelease
+        run: |
+          ./gradlew :projected:assembleRelease :projected:assembleDebug \
+                    :projected:bundleRelease :parking:assembleRelease
 
       - name: Verify release signature
         run: |
@@ -55,6 +57,9 @@ jobs:
              "out/car-probe-auto-$TAG-debug.apk"
           cp projected/build/outputs/bundle/release/projected-release.aab \
              "out/car-probe-auto-$TAG.aab"
+          # Plain phone app: no Android Auto, so no trusted-source install needed.
+          cp parking/build/outputs/apk/release/parking-release.apk \
+             "out/parking-probe-$TAG.apk"
           ls -la out
 
       # gh is preinstalled on the runner, so publishing needs no extra action.

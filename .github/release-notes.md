@@ -2,9 +2,13 @@ Android Auto vehicle data probe. Install on a **phone**, not the car.
 
 | Asset | Use |
 |---|---|
-| `*.aab` | Upload to Play — internal testing track, the only route into a real car |
-| `*-release.apk` | Desktop Head Unit, or direct install |
-| `*-debug.apk` | Same, but accepts any host |
+| `parking-probe-*.apk` | **Parking floor probe — an ordinary phone app, just install it** |
+| `car-probe-auto-*.aab` | Upload to Play — internal testing track, the only route into a real car |
+| `car-probe-auto-*-release.apk` | Desktop Head Unit, or direct install |
+| `car-probe-auto-*-debug.apk` | Same, but accepts any host |
+
+`parking-probe` uses no Android Auto at all, so none of the caveats below apply to
+it: sideload it, grant the permissions, pick the car's Bluetooth device, and drive.
 
 > **Sideloading these APKs into a real car does not work.** Android Auto only runs
 > templated apps installed from a trusted source, and its **Unknown sources**

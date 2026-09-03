@@ -19,3 +19,4 @@ rootProject.name = "car-apps"
 include(":core")
 include(":projected")
 include(":automotive")
+include(":parking")

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Identifying which Bluetooth device is the car, and hearing it connect. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!--
+      Location is here for the entrance fix and because Wi-Fi scan results are
+      location-derived below API 33. The point of the app is what happens after
+      GPS dies, so this is only ever the last outdoor reading.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="33" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- A barometer is the one sensor this cannot work without. -->
+    <uses-feature
+        android:name="android.hardware.sensor.barometer"
+        android:required="true" />
+
+    <application
+        android:name=".ParkingApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".DriveRecorderService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!--
+          ACL connect/disconnect are exempt from the implicit-broadcast ban, so a
+          manifest receiver still wakes the app when the car radio comes and goes.
+          That pairing is the whole trigger: connect means a drive started,
+          disconnect means the car was parked and left.
+        -->
+        <receiver
+            android:name=".CarBluetoothReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
