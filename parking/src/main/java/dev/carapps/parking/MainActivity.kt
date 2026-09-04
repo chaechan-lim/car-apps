@@ -47,17 +47,40 @@ class MainActivity : AppCompatActivity() {
             setTextIsSelectable(true)
         }
 
-        val buttons = LinearLayout(this).apply {
+        val setupRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(PADDING, PADDING, PADDING, 0)
             addView(button("Car") { pickCar() })
             addView(button("Label") { labelLatest() })
-            addView(button("Share") { startActivity(ReportExport.shareIntent(store.exportJson())) })
+            addView(button("Share") { startActivity(ReportExport.shareIntent(exportAll())) })
+        }
+
+        // Manual control, because the Bluetooth trigger is exactly what is under
+        // suspicion: a drive recorded by hand still produces usable data, and the
+        // difference between the two is itself informative.
+        val manualRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(PADDING, 0, PADDING, 0)
+            addView(button("Start") {
+                DebugLog.write(this@MainActivity, "manual START")
+                DriveRecorderService.start(this@MainActivity)
+                render()
+            })
+            addView(button("Stop") {
+                DebugLog.write(this@MainActivity, "manual STOP")
+                DriveRecorderService.stop(this@MainActivity)
+                render()
+            })
+            addView(button("Clear log") {
+                DebugLog.clear(this@MainActivity)
+                render()
+            })
         }
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(buttons)
+            addView(setupRow)
+            addView(manualRow)
             addView(
                 ScrollView(this@MainActivity).apply { addView(content) },
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f),
@@ -106,7 +129,26 @@ class MainActivity : AppCompatActivity() {
                 appendLine("  cells        : ${event.cells.size}")
                 appendLine("  last fix     : ${fix(event)}")
             }
+            appendLine()
+            appendLine("═".repeat(34))
+            appendLine("TRIGGER LOG")
+            appendLine()
+            val log = DebugLog.read(this@MainActivity)
+            if (log.isEmpty()) {
+                appendLine("(empty — no Bluetooth events seen yet)")
+            } else {
+                log.asReversed().forEach { appendLine(it) }
+            }
         }
+    }
+
+    /** Recordings and the trigger log together: neither explains the other alone. */
+    private fun exportAll(): String = buildString {
+        appendLine("=== trigger log ===")
+        DebugLog.read(this@MainActivity).forEach { appendLine(it) }
+        appendLine()
+        appendLine("=== events ===")
+        append(store.exportJson())
     }
 
     private fun ramps(yaw: Float): String {

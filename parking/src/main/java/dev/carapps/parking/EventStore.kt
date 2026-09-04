@@ -56,9 +56,18 @@ class Settings(context: Context) {
         get() = prefs.getString(KEY_NAME, null)
         set(value) = prefs.edit().putString(KEY_NAME, value).apply()
 
+    /**
+     * Kept outside the service so a process death mid-drive does not take the start
+     * time with it — the first recordings came back with a start time of zero.
+     */
+    var driveStartedAt: Long
+        get() = prefs.getLong(KEY_STARTED, 0L)
+        set(value) = prefs.edit().putLong(KEY_STARTED, value).apply()
+
     private companion object {
         const val KEY_ADDRESS = "car_address"
         const val KEY_NAME = "car_name"
+        const val KEY_STARTED = "drive_started_at"
     }
 }
 

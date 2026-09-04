@@ -14,7 +14,6 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
@@ -30,18 +29,26 @@ import androidx.core.content.ContextCompat
 class DriveRecorderService : android.app.Service(), LocationListener {
 
     private lateinit var sensors: DriveSensors
-    private var startedAtWall = 0L
-    private var startedAtElapsed = 0L
+    private lateinit var settings: Settings
     private var lastFix: Location? = null
     private var lastFixAtElapsed = 0L
+    private var recording = false
 
     override fun onCreate() {
         super.onCreate()
         sensors = DriveSensors(this)
+        settings = Settings(this)
+        DebugLog.write(this, "service created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        // A null intent means the system restarted us after killing the process.
+        // Sensor state is gone, so the honest move is to start a fresh recording
+        // rather than carry on as if the earlier samples still existed.
+        val action = intent?.action ?: ACTION_START
+        DebugLog.write(this, "onStartCommand action=$action restarted=${intent == null}")
+
+        when (action) {
             ACTION_START -> startRecording()
             ACTION_STOP -> {
                 finishRecording()
@@ -52,25 +59,23 @@ class DriveRecorderService : android.app.Service(), LocationListener {
     }
 
     private fun startRecording() {
+        if (recording) {
+            DebugLog.write(this, "already recording, ignoring start")
+            return
+        }
         startForeground(NOTIFICATION_ID, notification())
-        startedAtWall = System.currentTimeMillis()
-        startedAtElapsed = SystemClock.elapsedRealtime()
+        recording = true
+        settings.driveStartedAt = System.currentTimeMillis()
         sensors.start()
         requestLocation()
-        Log.i(TAG, "recording started, barometer=${sensors.hasBarometer}")
+        DebugLog.write(this, "recording started, barometer=${sensors.hasBarometer}")
     }
 
-    /**
-     * Keeps the last fix from before the roof cut it off.
-     *
-     * Coarse on purpose: this answers "which building", and the app exists because
-     * the interesting part starts once this stops updating. How stale the fix is at
-     * parking time is itself a useful number, so it is recorded alongside.
-     */
     private fun requestLocation() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
             != PackageManager.PERMISSION_GRANTED
         ) {
+            DebugLog.write(this, "no location permission")
             return
         }
         val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -86,7 +91,7 @@ class DriveRecorderService : android.app.Service(), LocationListener {
                     LOCATION_DISTANCE_M,
                     this,
                 )
-            }.onFailure { Log.w(TAG, "provider $provider unavailable", it) }
+            }.onFailure { DebugLog.write(this, "provider $provider unavailable: ${it.message}") }
         }
     }
 
@@ -109,15 +114,22 @@ class DriveRecorderService : android.app.Service(), LocationListener {
         val samples = sensors.pressureSamples
         val yaw = sensors.yawDegrees
         sensors.stop()
+        recording = false
         runCatching {
-            (getSystemService(Context.LOCATION_SERVICE) as LocationManager)
-                .removeUpdates(this)
+            (getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(this)
+        }
+
+        if (samples.isEmpty()) {
+            // Saved anyway, marked by its empty curve. A record with nothing in it is
+            // evidence that the drive was never seen, and dropping it would erase the
+            // only sign that the trigger is broken.
+            DebugLog.write(this, "finishing with NO pressure samples — drive start was missed")
         }
 
         val fingerprint = WifiFingerprint(this)
         val event = ParkingEvent(
             id = System.currentTimeMillis(),
-            startedAt = startedAtWall,
+            startedAt = settings.driveStartedAt,
             endedAt = System.currentTimeMillis(),
             pressureSamples = samples,
             yawDegrees = yaw,
@@ -134,7 +146,8 @@ class DriveRecorderService : android.app.Service(), LocationListener {
             cells = CellFingerprint(this).capture(),
         )
         EventStore(this).add(event)
-        Log.i(TAG, "recorded ${samples.size} samples, drop=${event.pressureDropHpa}")
+        settings.driveStartedAt = 0L
+        DebugLog.write(this, "recorded ${samples.size} samples, rise=${event.pressureDropHpa}")
         notifyParked(event)
     }
 
@@ -172,16 +185,18 @@ class DriveRecorderService : android.app.Service(), LocationListener {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE,
         )
-        NotificationManagerCompatShim(this).notify(
-            PARKED_NOTIFICATION_ID,
-            NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle(getString(R.string.parked_title))
-                .setContentText(text)
-                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-                .setContentIntent(open)
-                .setAutoCancel(true)
-                .build(),
-        )
+        runCatching {
+            getSystemService(NotificationManager::class.java).notify(
+                PARKED_NOTIFICATION_ID,
+                NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setContentTitle(getString(R.string.parked_title))
+                    .setContentText(text)
+                    .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                    .setContentIntent(open)
+                    .setAutoCancel(true)
+                    .build(),
+            )
+        }
     }
 
     private fun createChannel() {
@@ -197,6 +212,7 @@ class DriveRecorderService : android.app.Service(), LocationListener {
     }
 
     override fun onDestroy() {
+        DebugLog.write(this, "service destroyed (recording=$recording)")
         sensors.stop()
         super.onDestroy()
     }
@@ -207,7 +223,6 @@ class DriveRecorderService : android.app.Service(), LocationListener {
         const val ACTION_START = "dev.carapps.parking.START"
         const val ACTION_STOP = "dev.carapps.parking.STOP"
 
-        private const val TAG = "Parking"
         private const val CHANNEL_ID = "drive"
         private const val NOTIFICATION_ID = 1
         private const val PARKED_NOTIFICATION_ID = 2
@@ -218,19 +233,22 @@ class DriveRecorderService : android.app.Service(), LocationListener {
         fun start(context: Context) = send(context, ACTION_START)
         fun stop(context: Context) = send(context, ACTION_STOP)
 
+        /**
+         * Failures are recorded rather than swallowed. Since Android 12 a foreground
+         * service cannot generally be started from the background, and a Bluetooth
+         * broadcast is one of the exemptions — but if that exemption does not apply
+         * here, the throw is the explanation for a drive that was never recorded, and
+         * it must not disappear into a catch block.
+         */
         private fun send(context: Context, action: String) {
             val intent = Intent(context, DriveRecorderService::class.java).setAction(action)
             runCatching { ContextCompat.startForegroundService(context, intent) }
-                .onFailure { Log.w(TAG, "could not start service", it) }
-        }
-    }
-}
-
-/** Thin wrapper so notification posting stays in one place. */
-private class NotificationManagerCompatShim(private val context: Context) {
-    fun notify(id: Int, notification: Notification) {
-        runCatching {
-            context.getSystemService(NotificationManager::class.java).notify(id, notification)
+                .onFailure {
+                    DebugLog.write(
+                        context,
+                        "startForegroundService($action) FAILED: ${it.javaClass.simpleName}: ${it.message}",
+                    )
+                }
         }
     }
 }
