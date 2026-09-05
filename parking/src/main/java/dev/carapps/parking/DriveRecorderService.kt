@@ -32,6 +32,16 @@ class DriveRecorderService : android.app.Service(), LocationListener {
     private lateinit var settings: Settings
     private var lastFix: Location? = null
     private var lastFixAtElapsed = 0L
+    private var startedAtElapsed = 0L
+
+    /**
+     * When a satellite fix last arrived, kept apart from [lastFix].
+     *
+     * Network fixes carry on underground off cell towers, so the best-accuracy fix
+     * keeps updating in a basement and cannot mark the entrance. Only GPS going
+     * quiet does.
+     */
+    private var lastGpsFixAtElapsed = 0L
     private var recording = false
 
     override fun onCreate() {
@@ -65,6 +75,8 @@ class DriveRecorderService : android.app.Service(), LocationListener {
         }
         startForeground(NOTIFICATION_ID, notification())
         recording = true
+        startedAtElapsed = SystemClock.elapsedRealtime()
+        lastGpsFixAtElapsed = 0L
         settings.driveStartedAt = System.currentTimeMillis()
         sensors.start()
         requestLocation()
@@ -96,6 +108,9 @@ class DriveRecorderService : android.app.Service(), LocationListener {
     }
 
     override fun onLocationChanged(location: Location) {
+        if (location.provider == LocationManager.GPS_PROVIDER) {
+            lastGpsFixAtElapsed = SystemClock.elapsedRealtime()
+        }
         // Keep the better fix rather than the newest: a coarse network update
         // arriving after the car is already inside would otherwise overwrite the
         // sharp street-level fix taken on the way in.
@@ -138,6 +153,8 @@ class DriveRecorderService : android.app.Service(), LocationListener {
             },
             secondsSinceLastFix = if (lastFixAtElapsed == 0L) null
             else (SystemClock.elapsedRealtime() - lastFixAtElapsed) / 1000,
+            lastGpsFixElapsedMs = if (lastGpsFixAtElapsed == 0L) null
+            else lastGpsFixAtElapsed - startedAtElapsed,
             // Captured here rather than during the drive: the fingerprint that matters
             // is the one at the parked spot.
             wifi = fingerprint.capture(),
@@ -147,7 +164,11 @@ class DriveRecorderService : android.app.Service(), LocationListener {
         )
         EventStore(this).add(event)
         settings.driveStartedAt = 0L
-        DebugLog.write(this, "recorded ${samples.size} samples, rise=${event.pressureDropHpa}")
+        DebugLog.write(
+            this,
+            "recorded ${samples.size} samples, entryRise=${event.entryRiseHpa} " +
+                "wholeDrive=${event.wholeDriveRiseHpa} gpsLostAt=${event.lastGpsFixElapsedMs}",
+        )
         notifyParked(event)
     }
 

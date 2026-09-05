@@ -16,15 +16,24 @@ data class ParkingEvent(
     val startedAt: Long,
     val endedAt: Long,
 
-    /** Pressure in hPa, sampled through the drive. The floor signal lives here. */
-    val pressureSamples: List<PressureSample>,
+    /** Pressure in hPa and cumulative yaw, sampled through the drive. */
+    val pressureSamples: List<Sample>,
 
-    /** Cumulative yaw in degrees. Ramps show up as multiples of 360. */
+    /** Cumulative yaw over the whole drive. Mostly road curves; see [yawSinceEntry]. */
     val yawDegrees: Float,
 
-    /** Last fix before the roof cut it off — which building, not which floor. */
+    /** Best fix of the drive — which building, not which floor. */
     val lastLocation: Fix?,
     val secondsSinceLastFix: Long?,
+
+    /**
+     * When satellites were last seen, measured from the start of the drive.
+     *
+     * This is the entry marker. Network fixes keep arriving underground from cell
+     * towers, so only a satellite fix going stale marks the ramp — mixing the two
+     * providers is what made the first recordings unreadable.
+     */
+    val lastGpsFixElapsedMs: Long?,
 
     /** BSSID -> level(dBm) at the moment of parking. The return-visit fingerprint. */
     val wifi: Map<String, Int>,
@@ -44,26 +53,53 @@ data class ParkingEvent(
     /** Ground truth, entered by hand afterwards. Null until then. */
     val actualFloor: String? = null,
 ) {
-    data class PressureSample(val elapsedMs: Long, val hPa: Float)
+    data class Sample(val elapsedMs: Long, val hPa: Float, val yawDeg: Float)
     data class Fix(val lat: Double, val lon: Double, val accuracy: Float)
 
     /**
-     * Pressure rise from the highest point of the drive to the end, in hPa.
+     * Pressure rise measured over the whole drive.
      *
-     * Descending raises pressure, so a positive number means the car ended below
-     * where it had been. Taking the maximum rather than the start point matters:
-     * the drive itself crosses hills, and the descent that counts is the last one.
+     * Kept only for comparison. It reads terrain, not floors: a drive down from
+     * higher ground registers a large rise having never left the surface, which is
+     * how a ground-floor park first came back estimated at eight levels down.
      */
-    val pressureDropHpa: Float?
+    val wholeDriveRiseHpa: Float?
         get() {
             if (pressureSamples.isEmpty()) return null
-            val minimum = pressureSamples.minOf { it.hPa }
-            return pressureSamples.last().hPa - minimum
+            return pressureSamples.last().hPa - pressureSamples.minOf { it.hPa }
         }
 
-    /** Rough floors below the reference, at a nominal 3 m per level. */
+    /** Samples from the moment satellites were lost — the descent, without the terrain. */
+    val samplesSinceEntry: List<Sample>
+        get() {
+            val entry = lastGpsFixElapsedMs ?: return emptyList()
+            return pressureSamples.filter { it.elapsedMs >= entry }
+        }
+
+    /**
+     * Pressure rise since entering the structure, in hPa. The floor signal proper.
+     *
+     * Measured from the last satellite fix rather than the drive's high point, so
+     * hills along the way cancel out and only what happened under the roof is left.
+     */
+    val entryRiseHpa: Float?
+        get() {
+            val segment = samplesSinceEntry
+            if (segment.size < 2) return null
+            return segment.last().hPa - segment.first().hPa
+        }
+
+    /** Rough levels below the entrance, at a nominal 3 m each. */
     val estimatedFloorsDown: Float?
-        get() = pressureDropHpa?.let { it / HPA_PER_FLOOR }
+        get() = entryRiseHpa?.let { it / HPA_PER_FLOOR }
+
+    /** Yaw accumulated after entry only, where a spiral ramp actually shows up. */
+    val yawSinceEntry: Float?
+        get() {
+            val segment = samplesSinceEntry
+            if (segment.size < 2) return null
+            return segment.last().yawDeg - segment.first().yawDeg
+        }
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -72,8 +108,11 @@ data class ParkingEvent(
         put("yawDegrees", yawDegrees.toDouble())
         put("actualFloor", actualFloor ?: JSONObject.NULL)
         put("secondsSinceLastFix", secondsSinceLastFix ?: JSONObject.NULL)
-        put("pressureDropHpa", pressureDropHpa?.toDouble() ?: JSONObject.NULL)
+        put("wholeDriveRiseHpa", wholeDriveRiseHpa?.toDouble() ?: JSONObject.NULL)
+        put("entryRiseHpa", entryRiseHpa?.toDouble() ?: JSONObject.NULL)
         put("estimatedFloorsDown", estimatedFloorsDown?.toDouble() ?: JSONObject.NULL)
+        put("yawSinceEntry", yawSinceEntry?.toDouble() ?: JSONObject.NULL)
+        put("lastGpsFixElapsedMs", lastGpsFixElapsedMs ?: JSONObject.NULL)
         put(
             "lastLocation",
             lastLocation?.let {
@@ -84,7 +123,12 @@ data class ParkingEvent(
             "pressureSamples",
             JSONArray().apply {
                 pressureSamples.forEach {
-                    put(JSONObject().put("t", it.elapsedMs).put("hPa", it.hPa.toDouble()))
+                    put(
+                        JSONObject()
+                            .put("t", it.elapsedMs)
+                            .put("hPa", it.hPa.toDouble())
+                            .put("yaw", it.yawDeg.toDouble())
+                    )
                 }
             },
         )
@@ -111,7 +155,11 @@ data class ParkingEvent(
                 endedAt = json.getLong("endedAt"),
                 pressureSamples = (0 until samples.length()).map {
                     val sample = samples.getJSONObject(it)
-                    PressureSample(sample.getLong("t"), sample.getDouble("hPa").toFloat())
+                    Sample(
+                        sample.getLong("t"),
+                        sample.getDouble("hPa").toFloat(),
+                        sample.optDouble("yaw", 0.0).toFloat(),
+                    )
                 },
                 yawDegrees = json.optDouble("yawDegrees", 0.0).toFloat(),
                 lastLocation = json.optJSONObject("lastLocation")?.let {
@@ -119,6 +167,8 @@ data class ParkingEvent(
                 },
                 secondsSinceLastFix = if (json.isNull("secondsSinceLastFix")) null
                 else json.getLong("secondsSinceLastFix"),
+                lastGpsFixElapsedMs = if (json.isNull("lastGpsFixElapsedMs")) null
+                else json.getLong("lastGpsFixElapsedMs"),
                 wifi = wifiJson.keys().asSequence().associateWith { wifiJson.getInt(it) },
                 connectedWifi = if (json.isNull("connectedWifi")) null
                 else json.getString("connectedWifi"),

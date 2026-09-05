@@ -25,7 +25,7 @@ class DriveSensors(context: Context) : SensorEventListener {
     private val barometer = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
     private val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
 
-    private val samples = mutableListOf<ParkingEvent.PressureSample>()
+    private val samples = mutableListOf<ParkingEvent.Sample>()
     private var startedAtElapsed = 0L
     private var lastSampleAt = 0L
     private var lastGyroAt = 0L
@@ -34,7 +34,7 @@ class DriveSensors(context: Context) : SensorEventListener {
     var yawDegrees = 0f
         private set
 
-    val pressureSamples: List<ParkingEvent.PressureSample> get() = samples.toList()
+    val pressureSamples: List<ParkingEvent.Sample> get() = samples.toList()
 
     fun start() {
         startedAtElapsed = SystemClock.elapsedRealtime()
@@ -69,7 +69,7 @@ class DriveSensors(context: Context) : SensorEventListener {
         // last an hour, so thin it to something a phone can hold and a person can read.
         if (lastSampleAt != 0L && now - lastSampleAt < SAMPLE_INTERVAL_MS) return
         lastSampleAt = now
-        samples += ParkingEvent.PressureSample(now - startedAtElapsed, event.values[0])
+        samples += ParkingEvent.Sample(now - startedAtElapsed, event.values[0], yawDegrees)
     }
 
     private fun onGyroscope(event: SensorEvent) {
