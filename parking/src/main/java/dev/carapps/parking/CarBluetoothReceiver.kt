@@ -36,12 +36,12 @@ class CarBluetoothReceiver : BroadcastReceiver() {
 
         when (intent.action) {
             BluetoothDevice.ACTION_ACL_CONNECTED -> {
-                DebugLog.write(context, "CONNECTED — starting recorder")
+                DebugLog.write(context, "CONNECTED (manifest) — waking monitor")
                 DriveRecorderService.start(context)
             }
 
             BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
-                DebugLog.write(context, "DISCONNECTED — finishing recorder")
+                DebugLog.write(context, "DISCONNECTED (manifest) — waking monitor")
                 DriveRecorderService.stop(context)
             }
         }

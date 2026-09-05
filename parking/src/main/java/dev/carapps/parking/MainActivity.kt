@@ -94,6 +94,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Opening the app is a moment when starting a foreground service is allowed,
+        // so it is also the reliable moment to make sure the monitor is up.
+        if (settings.carAddress != null) {
+            DriveRecorderService.ensureRunning(this)
+        }
         render()
     }
 
@@ -189,6 +194,7 @@ class MainActivity : AppCompatActivity() {
             .setItems(names.toTypedArray()) { _, index ->
                 settings.carAddress = devices[index].address
                 settings.carName = names[index]
+                DriveRecorderService.ensureRunning(this)
                 render()
             }
             .show()

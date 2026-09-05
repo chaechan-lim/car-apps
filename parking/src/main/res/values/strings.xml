@@ -2,6 +2,8 @@
 <resources>
     <string name="app_name">Parking Probe</string>
     <string name="channel_name">Drive recording</string>
+    <string name="waiting_title">Watching for the car</string>
+    <string name="waiting_text">Idle until %s connects</string>
     <string name="recording_title">Recording this drive</string>
     <string name="recording_text">Pressure and turns, until the car disconnects</string>
     <string name="parked_title">Parked — what floor?</string>

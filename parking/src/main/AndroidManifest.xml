@@ -19,6 +19,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- A barometer is the one sensor this cannot work without. -->
     <uses-feature
@@ -47,10 +48,10 @@
             android:foregroundServiceType="location" />
 
         <!--
-          ACL connect/disconnect are exempt from the implicit-broadcast ban, so a
-          manifest receiver still wakes the app when the car radio comes and goes.
-          That pairing is the whole trigger: connect means a drive started,
-          disconnect means the car was parked and left.
+          Backup only. The monitor listens for these itself once running; this
+          receiver exists to wake it if it has been killed. Starting a foreground
+          service from here is what proved unreliable, so nothing depends on it
+          succeeding.
         -->
         <receiver
             android:name=".CarBluetoothReceiver"
@@ -58,6 +59,14 @@
             <intent-filter>
                 <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
                 <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
     </application>
