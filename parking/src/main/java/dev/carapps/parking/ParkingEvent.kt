@@ -52,6 +52,16 @@ data class ParkingEvent(
 
     /** Ground truth, entered by hand afterwards. Null until then. */
     val actualFloor: String? = null,
+
+    /**
+     * Which garage this was, named by hand. Null until then.
+     *
+     * The floor label alone cannot be calibrated against anything, because levels are
+     * spaced differently in different buildings. A name ties the drive to the other
+     * drives that share a ramp, and only the driver knows that two coarse fixes a
+     * hundred metres apart are the same place.
+     */
+    val site: String? = null,
 ) {
     data class Sample(val elapsedMs: Long, val hPa: Float, val yawDeg: Float)
     data class Fix(val lat: Double, val lon: Double, val accuracy: Float)
@@ -211,6 +221,7 @@ data class ParkingEvent(
         put("endedAt", endedAt)
         put("yawDegrees", yawDegrees.toDouble())
         put("actualFloor", actualFloor ?: JSONObject.NULL)
+        put("site", site ?: JSONObject.NULL)
         put("secondsSinceLastFix", secondsSinceLastFix ?: JSONObject.NULL)
         put("wholeDriveRiseHpa", wholeDriveRiseHpa?.toDouble() ?: JSONObject.NULL)
         put("entryRiseHpa", entryRiseHpa?.toDouble() ?: JSONObject.NULL)
@@ -299,6 +310,7 @@ data class ParkingEvent(
                     cellJson.keys().asSequence().associateWith { cellJson.getInt(it) }
                 },
                 actualFloor = if (json.isNull("actualFloor")) null else json.getString("actualFloor"),
+                site = if (json.isNull("site")) null else json.getString("site"),
             )
         }
     }

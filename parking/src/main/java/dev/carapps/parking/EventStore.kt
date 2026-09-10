@@ -24,8 +24,12 @@ class EventStore(context: Context) {
         }
     }.getOrDefault(emptyList())
 
-    fun setActualFloor(id: Long, floor: String) {
-        write(read().map { if (it.id == id) it.copy(actualFloor = floor) else it })
+    fun setLabel(id: Long, floor: String, site: String?) {
+        write(
+            read().map {
+                if (it.id == id) it.copy(actualFloor = floor, site = site?.ifBlank { null }) else it
+            },
+        )
     }
 
     /**

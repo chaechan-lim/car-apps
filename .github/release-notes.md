@@ -28,9 +28,20 @@ it: sideload it, grant the permissions, pick the car's Bluetooth device, and dri
   a ramp from a hill but a spiral can.
 - **How long the car's radio stayed up past the deepest point**, which is the number
   that made the old estimate look like a failing sensor.
-- **A separation table at the top of the screen**, grouping the labelled drives by
-  floor. If two floors' ranges overlap there, the barometer cannot do this — that is
-  the whole question, and it is now answered on the phone rather than by exporting.
+- **Calibration per garage, not one constant everywhere.** Absolute pressure differs
+  between two places at the same height — weather, terrain, sensor offset — but none
+  of that reaches the estimate, which is a difference measured inside a single drive.
+  What does differ is metres per level: an apartment garage stacks levels about three
+  metres apart, a department store closer to four and a half, so the same 2.2 hPa is
+  five levels down in one and four in the other. Drives are now grouped by where they
+  ended, within 150 m of the last fix, and each site's hPa-per-level is fitted from
+  its own labelled drives. A garage can also be named by hand while labelling, which
+  overrides the guess and spreads to every drive that ended there.
+- **Levels-down is printed leaving that drive out of the fit**, so the figure beside a
+  known floor is a prediction rather than an echo of the label.
+- **A separation table per site.** If two floors' ranges overlap within one garage,
+  the barometer cannot do this — that is the whole question, and it is now answered on
+  the phone rather than by exporting.
 - Existing recordings are re-scored on open. Nothing needs re-driving.
 - Other Bluetooth devices no longer fill the trigger log.
 

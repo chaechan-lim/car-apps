@@ -124,11 +124,16 @@ class MainActivity : AppCompatActivity() {
                 return@buildString
             }
             appendSeparation(events)
+            val siteOf = ParkingSites.group(events)
+                .flatMap { site -> site.events.map { it.id to site } }
+                .toMap()
             events.forEach { event ->
+                val site = siteOf[event.id]
                 appendLine("─".repeat(34))
                 appendLine(timestamp(event.endedAt))
+                appendLine("  site         : ${site?.name ?: "—"}")
                 appendLine("  actual floor : ${event.actualFloor ?: "— not labelled —"}")
-                appendLine("  descent 4min : ${format(event.descentRiseHpa)} hPa → ${format(event.descentFloorsDown)} floors")
+                appendLine("  descent 4min : ${format(event.descentRiseHpa)} hPa → ${levels(event, site)}")
                 appendLine("  descent 8min : ${format(event.descentRiseLongHpa)} hPa")
                 appendLine("  descent yaw  : ${event.descentYawDeg?.toInt() ?: "—"}° (ramp spiral)")
                 appendLine("  climb began  : ${seconds(event.descentStartedBeforeEndMs)} before end")
@@ -190,32 +195,72 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * The labelled drives grouped by floor, per estimator.
+     * The labelled drives grouped by garage, then by floor.
      *
-     * This is the whole question in six lines. Floor detection is possible only if
-     * the ranges for two different floors do not touch; twenty-one drives read one
-     * at a time hide that, and the same twenty-one lined up by label answer it.
+     * Grouped by garage and not only by floor, because levels are spaced differently
+     * in different buildings: pooling every site together compares a three-metre
+     * apartment level against a four-and-a-half-metre department store one and makes
+     * the ranges overlap for a reason that has nothing to do with the sensor.
+     *
+     * Within one site this is the whole question in a few lines. Floors are tellable
+     * apart here only if two floors' ranges do not touch.
      */
     private fun StringBuilder.appendSeparation(events: List<ParkingEvent>) {
-        val labelled = events.filter { it.actualFloor != null }
-        if (labelled.isEmpty()) return
+        val sites = ParkingSites.group(events).filter { it.labelled.isNotEmpty() }
+        if (sites.isEmpty()) return
         appendLine("═".repeat(34))
-        appendLine("SEPARATION BY FLOOR (labelled only)")
-        appendLine("floor  n   descent4min    yaw4min")
-        labelled
-            .groupBy { it.actualFloor!!.lowercase() }
-            .toSortedMap()
-            .forEach { (floor, drives) ->
-                appendLine(
-                    "%-6s %-3d %-14s %s".format(
-                        floor,
-                        drives.size,
-                        range(drives.mapNotNull { it.descentRiseHpa }),
-                        range(drives.mapNotNull { it.descentYawDeg?.let { yaw -> Math.abs(yaw) } }),
-                    ),
-                )
-            }
+        appendLine("BY SITE — hPa per level is measured")
+        appendLine("per garage, never assumed.")
         appendLine()
+        sites.forEach { site ->
+            appendLine("${site.name}  (${site.events.size} drives)")
+            val perLevel = site.hPaPerLevel
+            appendLine(
+                if (perLevel == null) {
+                    "  hPa/level: — (no labelled basement park yet)"
+                } else {
+                    "  hPa/level: %.2f  from %d drive(s)".format(perLevel, site.calibrationDrives)
+                },
+            )
+            appendLine("  floor  n   descent4min   yaw4min")
+            site.labelled
+                .groupBy { it.actualFloor!!.lowercase() }
+                .toSortedMap()
+                .forEach { (floor, drives) ->
+                    appendLine(
+                        "  %-6s %-3d %-13s %s".format(
+                            floor,
+                            drives.size,
+                            range(drives.mapNotNull { it.descentRiseHpa }),
+                            range(drives.mapNotNull { it.descentYawDeg?.let(Math::abs) }),
+                        ),
+                    )
+                }
+            appendLine()
+        }
+        appendLine("Sites are guessed from the last fix within")
+        appendLine("${ParkingSites.RADIUS_M.toInt()} m. Type a name while labelling to")
+        appendLine("correct a split or a wrongly merged one.")
+        appendLine()
+    }
+
+    /**
+     * Levels down, converted with this garage's own spacing where it is known.
+     *
+     * The nominal 0.36 hPa is a starting guess and is marked as one, because at a
+     * site with taller levels it reads a floor too deep — which is the entire reason
+     * calibration is per garage.
+     */
+    private fun levels(event: ParkingEvent, site: ParkingSites.Site?): String {
+        val rise = event.descentRiseHpa ?: return "—"
+        // Fitted without this drive when this drive is one of the labelled ones, so the
+        // figure printed next to a known floor is a prediction and not an echo.
+        val perLevel = site?.hPaPerLevelExcluding(event.id.takeIf { event.actualFloor != null })
+        return if (perLevel == null || perLevel <= 0f) {
+            "%.1f levels (nominal 0.36)".format(rise / ParkingEvent.HPA_PER_FLOOR)
+        } else {
+            "%.1f levels (site %.2f)".format(rise / perLevel, perLevel)
+        }
     }
 
     private fun range(values: List<Float>): String =
@@ -260,25 +305,59 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun labelLatest() {
-        val target = store.read().firstOrNull { it.actualFloor == null }
+        val events = store.read()
+        val target = events.firstOrNull { it.actualFloor == null }
         if (target == null) {
             Toast.makeText(this, "Nothing left to label", Toast.LENGTH_SHORT).show()
             return
         }
-        val input = EditText(this).apply {
+        val floorInput = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT
-            hint = "B3, 1F, rooftop…"
+            hint = "B3, 1F, 지하5…"
+        }
+        val siteInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            hint = "which garage — 집, 회사, 스타필드…"
+            // Prefilled from whatever this drive already clusters with, so a name typed
+            // once spreads to every drive at that garage instead of being retyped.
+            setText(suggestedSite(target, events).orEmpty())
+        }
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(PADDING, 0, PADDING, 0)
+            addView(floorInput)
+            addView(siteInput)
         }
         AlertDialog.Builder(this)
             .setTitle("Floor on ${timestamp(target.endedAt)}")
-            .setMessage("Estimated ${format(target.estimatedFloorsDown)} floors down.")
-            .setView(input)
+            .setMessage("Measured ${format(target.descentRiseHpa)} hPa of descent.")
+            .setView(fields)
             .setPositiveButton("Save") { _, _ ->
-                store.setActualFloor(target.id, input.text.toString().trim())
+                store.setLabel(
+                    target.id,
+                    floorInput.text.toString().trim(),
+                    siteInput.text.toString().trim(),
+                )
                 render()
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    /** The name already given to a drive that ended at the same place, if there is one. */
+    private fun suggestedSite(target: ParkingEvent, events: List<ParkingEvent>): String? {
+        val fix = target.lastLocation ?: return null
+        return events
+            .filter { it.id != target.id && !it.site.isNullOrBlank() }
+            .filter { other ->
+                other.lastLocation?.let {
+                    ParkingSites.distanceMeters(fix, it) <= ParkingSites.RADIUS_M
+                } == true
+            }
+            .minByOrNull { other ->
+                ParkingSites.distanceMeters(fix, other.lastLocation!!)
+            }
+            ?.site
     }
 
     private fun hasBluetoothPermission() =
