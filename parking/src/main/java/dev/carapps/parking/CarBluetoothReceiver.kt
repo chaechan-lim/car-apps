@@ -29,10 +29,9 @@ class CarBluetoothReceiver : BroadcastReceiver() {
             DebugLog.write(context, "$action from $address — no car set, ignoring")
             return
         }
-        if (address == null || !address.equals(carAddress, ignoreCase = true)) {
-            DebugLog.write(context, "$action from $address — not the car")
-            return
-        }
+        // Foreign devices pass silently. The log is 300 lines and every pair of
+        // earbuds used to take two of them, crowding out the drives it exists for.
+        if (address == null || !address.equals(carAddress, ignoreCase = true)) return
 
         when (intent.action) {
             BluetoothDevice.ACTION_ACL_CONNECTED -> {

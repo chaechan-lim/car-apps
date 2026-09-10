@@ -42,6 +42,21 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Hands the exported recording to another app as a file. The whole point is
+          size: the export used to travel inside the share intent and the process
+          died on the way out once a few days of drives had accumulated.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="dev.carapps.parking.reports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/report_paths" />
+        </provider>
+
         <service
             android:name=".DriveRecorderService"
             android:exported="false"

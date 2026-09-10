@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import androidx.core.content.FileProvider
+import java.io.File
 import java.net.URLEncoder
 
 /**
@@ -44,6 +46,43 @@ object ReportExport {
             putExtra(Intent.EXTRA_SUBJECT, "Car Probe report")
             putExtra(Intent.EXTRA_TEXT, report)
         }.let { Intent.createChooser(it, "Share report") }
+
+    /**
+     * Shares a report as a file rather than as intent text.
+     *
+     * [shareIntent] carries the whole report in an intent extra, which crosses a
+     * Binder transaction with a hard limit around a megabyte. A recording that
+     * holds every pressure sample of every drive passes that limit easily, and the
+     * failure is a process kill at the moment of tapping Share — no dialog, no
+     * exception the caller can catch. A file goes out by reference, so size stops
+     * mattering; the text extra keeps only the first lines, as a preview for apps
+     * that show one.
+     *
+     * Requires a FileProvider under the authority "<packageName>.reports" pointing
+     * at @xml/report_paths, which this module supplies.
+     */
+    fun shareFileIntent(context: Context, fileName: String, report: String): Intent =
+        shareFileIntent(context, fileName) { it.append(report) }
+
+    /**
+     * The streaming form. [write] is handed the file's writer and appends the report
+     * to it a piece at a time, so a report larger than comfortable never exists as a
+     * single string — the other way this export could have been killing the process.
+     */
+    fun shareFileIntent(context: Context, fileName: String, write: (Appendable) -> Unit): Intent {
+        val directory = File(context.cacheDir, "reports").apply { mkdirs() }
+        directory.listFiles()?.forEach { it.delete() }
+        val file = File(directory, fileName)
+        file.bufferedWriter().use(write)
+
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.reports", file)
+        return Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_SUBJECT, fileName)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }.let { Intent.createChooser(it, "Share report") }
+    }
 
     fun githubIssueIntent(repo: String, title: String, report: String): Intent {
         val body = if (report.length <= MAX_ISSUE_BODY) {

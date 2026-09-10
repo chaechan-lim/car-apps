@@ -58,11 +58,11 @@ class DriveRecorderService : android.app.Service(), LocationListener {
         override fun onReceive(context: Context, intent: Intent) {
             val device = intent.getDevice() ?: return
             val carAddress = settings.carAddress ?: return
-            val label = intent.action?.substringAfterLast('.')
-            if (!device.address.equals(carAddress, ignoreCase = true)) {
-                DebugLog.write(this@DriveRecorderService, "$label ${device.address} — not the car")
-                return
-            }
+            // Other devices are not logged. They were, while it was still unknown
+            // whether the car's own events arrived at all; now that they do, a pair of
+            // earbuds coming and going twenty times a day is what pushes the drive
+            // boundaries out of the ring log.
+            if (!device.address.equals(carAddress, ignoreCase = true)) return
             when (intent.action) {
                 BluetoothDevice.ACTION_ACL_CONNECTED -> {
                     DebugLog.write(this@DriveRecorderService, "CONNECTED (in-process)")
@@ -213,8 +213,9 @@ class DriveRecorderService : android.app.Service(), LocationListener {
         updateNotification()
         DebugLog.write(
             this,
-            "recorded ${samples.size} samples, entryRise=${event.entryRiseHpa} " +
-                "wholeDrive=${event.wholeDriveRiseHpa} gpsLostAt=${event.lastGpsFixElapsedMs}",
+            "recorded ${samples.size} samples, descent=${event.descentRiseHpa} " +
+                "entryRise=${event.entryRiseHpa} wholeDrive=${event.wholeDriveRiseHpa} " +
+                "gpsLostBeforeEnd=${event.gpsLostBeforeEndMs}",
         )
         notifyParked(event)
     }
@@ -264,7 +265,9 @@ class DriveRecorderService : android.app.Service(), LocationListener {
             return
         }
         createChannel()
-        val estimate = event.estimatedFloorsDown
+        // The descent estimate, not the GPS-sliced one: the satellite marker turned
+        // out to fire anywhere from three minutes before stopping to not at all.
+        val estimate = event.descentFloorsDown
         val text = if (estimate == null) {
             getString(R.string.parked_no_estimate)
         } else {

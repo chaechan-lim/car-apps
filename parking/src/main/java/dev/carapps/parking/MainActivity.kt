@@ -20,6 +20,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import dev.carapps.probe.core.ReportExport
 import dev.carapps.probe.core.padForSystemBars
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -52,7 +54,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(PADDING, PADDING, PADDING, 0)
             addView(button("Car") { pickCar() })
             addView(button("Label") { labelLatest() })
-            addView(button("Share") { startActivity(ReportExport.shareIntent(exportAll())) })
+            addView(button("Share") { share() })
         }
 
         // Manual control, because the Bluetooth trigger is exactly what is under
@@ -121,16 +123,21 @@ class MainActivity : AppCompatActivity() {
                 appendLine("makes the pressure curve mean anything.")
                 return@buildString
             }
+            appendSeparation(events)
             events.forEach { event ->
                 appendLine("─".repeat(34))
                 appendLine(timestamp(event.endedAt))
                 appendLine("  actual floor : ${event.actualFloor ?: "— not labelled —"}")
-                appendLine("  entry rise   : ${format(event.entryRiseHpa)} hPa")
-                appendLine("  floors down  : ${format(event.estimatedFloorsDown)}")
+                appendLine("  descent 4min : ${format(event.descentRiseHpa)} hPa → ${format(event.descentFloorsDown)} floors")
+                appendLine("  descent 8min : ${format(event.descentRiseLongHpa)} hPa")
+                appendLine("  descent yaw  : ${event.descentYawDeg?.toInt() ?: "—"}° (ramp spiral)")
+                appendLine("  climb began  : ${seconds(event.descentStartedBeforeEndMs)} before stopping")
+                appendLine("  entry rise   : ${format(event.entryRiseHpa)} hPa (gps-sliced)")
                 appendLine("  whole drive  : ${format(event.wholeDriveRiseHpa)} hPa (terrain)")
                 appendLine("  yaw in garage: ${event.yawSinceEntry?.toInt() ?: "—"}°")
                 appendLine("  yaw total    : ${event.yawDegrees.toInt()}°")
-                appendLine("  gps lost at  : ${event.lastGpsFixElapsedMs?.let { it / 1000 }?.toString() ?: "—"}s")
+                appendLine("  drive length : ${seconds(event.durationMs)}")
+                appendLine("  gps lost     : ${seconds(event.gpsLostBeforeEndMs)} before stopping")
                 appendLine("  samples      : ${event.pressureSamples.size}")
                 appendLine("  wifi APs     : ${event.wifi.size} (scan ${event.wifiScanAgeSeconds ?: "?"}s old)")
                 appendLine("  joined wifi  : ${event.connectedWifi ?: "none"}")
@@ -150,19 +157,70 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Recordings and the trigger log together: neither explains the other alone. */
-    private fun exportAll(): String = buildString {
-        appendLine("=== trigger log ===")
-        DebugLog.read(this@MainActivity).forEach { appendLine(it) }
-        appendLine()
-        appendLine("=== events ===")
-        append(store.exportJson())
+    /**
+     * Exports as a file.
+     *
+     * The export is megabytes — every pressure sample of every drive — and putting
+     * that in an intent extra killed the process the moment Share was tapped, which
+     * is what a Binder transaction over the limit looks like from the outside.
+     */
+    private fun share() {
+        val name = "parking-drives-%s.json".format(
+            SimpleDateFormat("MMdd-HHmm", Locale.US).format(Date()),
+        )
+        runCatching { ReportExport.shareFileIntent(this, name, ::writeExport) }
+            .onSuccess { startActivity(it) }
+            .onFailure {
+                DebugLog.write(this, "share failed: ${it.javaClass.simpleName}: ${it.message}")
+                Toast.makeText(this, "Export failed: ${it.message}", Toast.LENGTH_LONG).show()
+                render()
+            }
     }
 
-    private fun ramps(yaw: Float): String {
-        val turns = Math.abs(yaw) / 360f
-        return "%.1f turns".format(turns)
+    /** Recordings and the trigger log together: neither explains the other alone. */
+    private fun writeExport(out: Appendable) {
+        out.append("{\n\"device\": ")
+        out.append(JSONObject.quote(ReportExport.environmentHeader(this)))
+        out.append(",\n\"triggerLog\": ")
+        out.append(JSONArray(DebugLog.read(this)).toString())
+        out.append(",\n\"events\": ")
+        store.writeJsonTo(out)
+        out.append("}\n")
     }
+
+    /**
+     * The labelled drives grouped by floor, per estimator.
+     *
+     * This is the whole question in six lines. Floor detection is possible only if
+     * the ranges for two different floors do not touch; twenty-one drives read one
+     * at a time hide that, and the same twenty-one lined up by label answer it.
+     */
+    private fun StringBuilder.appendSeparation(events: List<ParkingEvent>) {
+        val labelled = events.filter { it.actualFloor != null }
+        if (labelled.isEmpty()) return
+        appendLine("═".repeat(34))
+        appendLine("SEPARATION BY FLOOR (labelled only)")
+        appendLine("floor  n   descent4min    yaw4min")
+        labelled
+            .groupBy { it.actualFloor!!.lowercase() }
+            .toSortedMap()
+            .forEach { (floor, drives) ->
+                appendLine(
+                    "%-6s %-3d %-14s %s".format(
+                        floor,
+                        drives.size,
+                        range(drives.mapNotNull { it.descentRiseHpa }),
+                        range(drives.mapNotNull { it.descentYawDeg?.let { yaw -> Math.abs(yaw) } }),
+                    ),
+                )
+            }
+        appendLine()
+    }
+
+    private fun range(values: List<Float>): String =
+        if (values.isEmpty()) "—" else "%.2f–%.2f".format(values.min(), values.max())
+
+    private fun seconds(millis: Long?) = millis?.let { "${it / 1000}s" } ?: "—"
 
     private fun fix(event: ParkingEvent) = event.lastLocation?.let {
         "%.5f, %.5f ±%.0fm, %ss old".format(

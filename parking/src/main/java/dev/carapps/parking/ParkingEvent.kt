@@ -93,6 +93,98 @@ data class ParkingEvent(
     val estimatedFloorsDown: Float?
         get() = entryRiseHpa?.let { it / HPA_PER_FLOOR }
 
+    /**
+     * How long before parking satellites were lost, in ms.
+     *
+     * Measured against the last sample rather than the wall clock, so it stays right
+     * on records whose start time was lost to a process death. This is the number
+     * that says whether [entryRiseHpa] had anything to measure: several drives kept
+     * a fix until seconds before stopping, and their entry slice is a couple of
+     * samples of a parked car.
+     */
+    val gpsLostBeforeEndMs: Long?
+        get() {
+            val lost = lastGpsFixElapsedMs ?: return null
+            val end = pressureSamples.lastOrNull()?.elapsedMs ?: return null
+            return (end - lost).coerceAtLeast(0)
+        }
+
+    /** How long the drive lasted, taken from the samples for the same reason. */
+    val durationMs: Long?
+        get() = pressureSamples.lastOrNull()?.elapsedMs
+
+    /**
+     * Pressure once the car has stopped, with the last seconds averaged.
+     *
+     * A single final sample is a coin toss: the door opening and the phone being
+     * picked up both move the reading, and the descent is measured against this.
+     */
+    val settledHpa: Float?
+        get() {
+            if (pressureSamples.isEmpty()) return null
+            val end = pressureSamples.last().elapsedMs
+            val tail = pressureSamples.filter { it.elapsedMs >= end - SETTLE_WINDOW_MS }
+            return median(tail.ifEmpty { listOf(pressureSamples.last()) }.map { it.hPa })
+        }
+
+    /**
+     * Rise from the lowest pressure within [windowMs] of parking up to the stop.
+     *
+     * This is the estimator that does not need GPS. The descent into a garage is the
+     * last sustained climb of a drive, so measuring from the tail's high point
+     * (lowest pressure) forward reads the ramp regardless of when the satellites
+     * happened to drop out — the marker that turned out to fire anywhere from zero
+     * to three minutes before the car stopped.
+     *
+     * The window is the whole assumption: too short clips a slow queue down the
+     * ramp, too long swallows the hill before the building. Two are reported side by
+     * side rather than one being chosen in advance.
+     */
+    fun tailRiseHpa(windowMs: Long): Float? {
+        val settled = settledHpa ?: return null
+        val end = pressureSamples.last().elapsedMs
+        val low = pressureSamples
+            .filter { it.elapsedMs >= end - windowMs }
+            .minOfOrNull { it.hPa } ?: return null
+        return settled - low
+    }
+
+    val descentRiseHpa: Float? get() = tailRiseHpa(RAMP_WINDOW_MS)
+    val descentRiseLongHpa: Float? get() = tailRiseHpa(LONG_RAMP_WINDOW_MS)
+    val descentFloorsDown: Float? get() = descentRiseHpa?.let { it / HPA_PER_FLOOR }
+
+    /**
+     * Yaw turned over the same window the descent is measured in.
+     *
+     * The second dimension, and the one that tells a ramp from a hill: a barometer
+     * cannot distinguish driving down into a garage from driving down a slope, but
+     * a garage is reached by spiralling and a road is not.
+     */
+    val descentYawDeg: Float?
+        get() {
+            if (pressureSamples.isEmpty()) return null
+            val end = pressureSamples.last().elapsedMs
+            val window = pressureSamples.filter { it.elapsedMs >= end - RAMP_WINDOW_MS }
+            if (window.size < 2) return null
+            return window.last().yawDeg - window.first().yawDeg
+        }
+
+    /**
+     * How long before stopping the climb began, in ms.
+     *
+     * Reads as a sanity check on the window: a value pinned to the window's own
+     * length means the descent started earlier than the window can see.
+     */
+    val descentStartedBeforeEndMs: Long?
+        get() {
+            if (pressureSamples.isEmpty()) return null
+            val end = pressureSamples.last().elapsedMs
+            val low = pressureSamples
+                .filter { it.elapsedMs >= end - LONG_RAMP_WINDOW_MS }
+                .minByOrNull { it.hPa } ?: return null
+            return end - low.elapsedMs
+        }
+
     /** Yaw accumulated after entry only, where a spiral ramp actually shows up. */
     val yawSinceEntry: Float?
         get() {
@@ -113,6 +205,13 @@ data class ParkingEvent(
         put("estimatedFloorsDown", estimatedFloorsDown?.toDouble() ?: JSONObject.NULL)
         put("yawSinceEntry", yawSinceEntry?.toDouble() ?: JSONObject.NULL)
         put("lastGpsFixElapsedMs", lastGpsFixElapsedMs ?: JSONObject.NULL)
+        put("gpsLostBeforeEndMs", gpsLostBeforeEndMs ?: JSONObject.NULL)
+        put("durationMs", durationMs ?: JSONObject.NULL)
+        put("descentRiseHpa", descentRiseHpa?.toDouble() ?: JSONObject.NULL)
+        put("descentRiseLongHpa", descentRiseLongHpa?.toDouble() ?: JSONObject.NULL)
+        put("descentFloorsDown", descentFloorsDown?.toDouble() ?: JSONObject.NULL)
+        put("descentStartedBeforeEndMs", descentStartedBeforeEndMs ?: JSONObject.NULL)
+        put("descentYawDeg", descentYawDeg?.toDouble() ?: JSONObject.NULL)
         put(
             "lastLocation",
             lastLocation?.let {
@@ -145,6 +244,18 @@ data class ParkingEvent(
          * starting guess, not a claim.
          */
         const val HPA_PER_FLOOR = 0.36f
+
+        /** The car is stopped over this; averaging it removes the door-opening blip. */
+        const val SETTLE_WINDOW_MS = 30_000L
+
+        /** A ramp taken at walking pace: five levels in four minutes. */
+        const val RAMP_WINDOW_MS = 240_000L
+
+        /** The same ramp behind a queue on a Saturday. */
+        const val LONG_RAMP_WINDOW_MS = 480_000L
+
+        private fun median(values: List<Float>): Float =
+            values.sorted()[values.size / 2]
 
         fun fromJson(json: JSONObject): ParkingEvent {
             val samples = json.optJSONArray("pressureSamples") ?: JSONArray()

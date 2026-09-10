@@ -28,9 +28,23 @@ class EventStore(context: Context) {
         write(read().map { if (it.id == id) it.copy(actualFloor = floor) else it })
     }
 
-    fun exportJson(): String = JSONArray().apply {
-        read().forEach { put(it.toJson()) }
-    }.toString(2)
+    /**
+     * Writes the records out one at a time.
+     *
+     * Not a single JSON string: a few days of drives is thousands of samples, and
+     * holding the whole export in memory to hand it onwards is how the export came
+     * to be the least reliable part of the app.
+     */
+    fun writeJsonTo(out: Appendable) {
+        val events = read()
+        out.append("[\n")
+        events.forEachIndexed { index, event ->
+            out.append(event.toJson().toString(2))
+            if (index != events.lastIndex) out.append(",")
+            out.append("\n")
+        }
+        out.append("]\n")
+    }
 
     private fun write(events: List<ParkingEvent>) {
         runCatching {

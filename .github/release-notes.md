@@ -10,6 +10,26 @@ Android Auto vehicle data probe. Install on a **phone**, not the car.
 `parking-probe` uses no Android Auto at all, so none of the caveats below apply to
 it: sideload it, grant the permissions, pick the car's Bluetooth device, and drive.
 
+**This build, for the parking probe:**
+
+- **Share no longer kills the app.** The export used to travel inside the share
+  intent, which crosses a Binder transaction capped near a megabyte; a few days of
+  drives is well past that, and the process was killed on the way out. It now
+  streams to a file and shares that by reference, so size stopped mattering.
+- **A floor estimate that does not depend on GPS.** The old one measured from the
+  last satellite fix, and the recordings show why that failed: satellites dropped
+  anywhere from three minutes before stopping to twelve seconds before, so the same
+  garage on the same floor was measured over a ramp one time and over a parked car
+  the next. The new estimate takes the last sustained climb before the car stops,
+  wherever the satellites happened to give up.
+- **Yaw over the same window**, because a barometer cannot tell a ramp from a hill
+  but a spiral can.
+- **A separation table at the top of the screen**, grouping the labelled drives by
+  floor. If two floors' ranges overlap there, the barometer cannot do this — that is
+  the whole question, and it is now answered on the phone rather than by exporting.
+- Existing recordings are re-scored on open. Nothing needs re-driving.
+- Other Bluetooth devices no longer fill the trigger log.
+
 > **Sideloading these APKs into a real car does not work.** Android Auto only runs
 > templated apps installed from a trusted source, and its **Unknown sources**
 > developer setting does not cover them — it

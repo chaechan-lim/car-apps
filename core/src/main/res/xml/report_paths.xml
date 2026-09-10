@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Where exported reports are staged before being handed to another app.
+
+  Cache, not files: an export is a snapshot on its way out, and letting the system
+  reclaim it is better than growing a directory of stale copies.
+-->
+<paths>
+    <cache-path
+        name="reports"
+        path="reports/" />
+</paths>
