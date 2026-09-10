@@ -16,14 +16,18 @@ it: sideload it, grant the permissions, pick the car's Bluetooth device, and dri
   intent, which crosses a Binder transaction capped near a megabyte; a few days of
   drives is well past that, and the process was killed on the way out. It now
   streams to a file and shares that by reference, so size stopped mattering.
-- **A floor estimate that does not depend on GPS.** The old one measured from the
-  last satellite fix, and the recordings show why that failed: satellites dropped
-  anywhere from three minutes before stopping to twelve seconds before, so the same
-  garage on the same floor was measured over a ramp one time and over a parked car
-  the next. The new estimate takes the last sustained climb before the car stops,
-  wherever the satellites happened to give up.
-- **Yaw over the same window**, because a barometer cannot tell a ramp from a hill
-  but a spiral can.
+- **A floor estimate that needs neither GPS nor the end of the recording.** Two
+  things were wrong. Satellites drop anywhere from three minutes before the car
+  stops to twelve seconds before, so slicing there measured a ramp one time and a
+  parked car the next. And the recording ends when the car's Bluetooth drops, which
+  can be after the walk up out of the garage — a climb up the stairs cancels the
+  drive down the ramp exactly, which is how the same B5F garage read 2.26 hPa on one
+  visit and 0.00 on another. The estimate now runs from the lowest pressure before
+  the deepest point up to that peak, and throws away everything after it.
+- **Yaw between the entrance and the deepest point**, because a barometer cannot tell
+  a ramp from a hill but a spiral can.
+- **How long the car's radio stayed up past the deepest point**, which is the number
+  that made the old estimate look like a failing sensor.
 - **A separation table at the top of the screen**, grouping the labelled drives by
   floor. If two floors' ranges overlap there, the barometer cannot do this — that is
   the whole question, and it is now answered on the phone rather than by exporting.
