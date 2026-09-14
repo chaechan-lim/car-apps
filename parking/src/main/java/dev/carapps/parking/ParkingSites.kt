@@ -4,19 +4,22 @@ import kotlin.math.cos
 import kotlin.math.hypot
 
 /**
- * Groups drives by the place they ended, and calibrates each place separately.
+ * Groups drives by the place they ended.
  *
- * Pressure per level is not a constant of nature. It is a property of a building:
- * an apartment garage stacks levels about three metres apart, a department store
- * closer to four and a half. The same 2.2 hPa is five levels down in one and four
- * in the other, so a single number converting pressure to floors is wrong
- * everywhere except the building it was fitted to.
+ * Note first what is *not* a reason to group. Absolute pressure differs between two
+ * places at the same height — weather, terrain, a fixed offset per sensor — but the
+ * estimate is a difference measured inside one drive, so all three cancel and no
+ * comparison across drives is ever made on absolute pressure.
  *
- * Note what is *not* a problem. Absolute pressure differs between two places at
- * the same altitude, by weather and by terrain, and by a fixed offset per sensor —
- * but the estimate is a difference measured inside one drive, so all three cancel.
- * What survives is the metres-per-level of the specific ramp, and that is what
- * grouping by site measures.
+ * What can differ is metres per level, which is a property of a building rather than
+ * of the air. That was the reason for grouping, and measuring it deflated the case:
+ * the three garages here with enough drives to fit came out at 0.50, 0.50 and 0.54
+ * hPa per level. Fitting each separately scored worse than one shared constant, so
+ * [FloorModel] keeps the grouping but blends a site's own drives toward the global
+ * figure, and a site has to earn its way out of it.
+ *
+ * The grouping still pays for itself twice: it is how a site accumulates evidence at
+ * all, and it is what makes "the usual floor here" a question the app can answer.
  */
 object ParkingSites {
 
@@ -31,36 +34,6 @@ object ParkingSites {
         val labelled: List<ParkingEvent> get() = events.filter { it.actualFloor != null }
 
         val fix: ParkingEvent.Fix? get() = events.firstNotNullOfOrNull { it.lastLocation }
-
-        /**
-         * Metres of air per level here, expressed in hPa and measured rather than
-         * assumed. Needs at least one labelled underground park to say anything.
-         */
-        val hPaPerLevel: Float? get() = hPaPerLevelExcluding(null)
-
-        /**
-         * The same, fitted without one drive.
-         *
-         * Applying a constant to the drive that produced it proves nothing — it
-         * reproduces the label by construction. Leaving that drive out turns the
-         * number into an actual prediction, which is the only version worth checking
-         * against the label.
-         */
-        fun hPaPerLevelExcluding(id: Long?): Float? {
-            val ratios = labelled.mapNotNull { event ->
-                if (event.id == id) return@mapNotNull null
-                val depth = depthBelowGround(event.actualFloor.orEmpty()) ?: return@mapNotNull null
-                if (depth < 1) return@mapNotNull null
-                event.descentRiseHpa?.let { it / depth }
-            }
-            return if (ratios.isEmpty()) null else ratios.average().toFloat()
-        }
-
-        /** How many labelled drives the calibration above rests on. */
-        val calibrationDrives: Int
-            get() = labelled.count {
-                (depthBelowGround(it.actualFloor.orEmpty()) ?: 0) >= 1 && it.descentRiseHpa != null
-            }
     }
 
     /**

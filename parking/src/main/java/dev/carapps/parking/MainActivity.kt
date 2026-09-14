@@ -124,26 +124,22 @@ class MainActivity : AppCompatActivity() {
                 return@buildString
             }
             appendSeparation(events)
-            val siteOf = ParkingSites.group(events)
-                .flatMap { site -> site.events.map { it.id to site } }
-                .toMap()
+            val sites = ParkingSites.group(events)
+            val siteOf = sites.flatMap { site -> site.events.map { it.id to site } }.toMap()
             events.forEach { event ->
                 val site = siteOf[event.id]
                 appendLine("─".repeat(34))
                 appendLine(timestamp(event.endedAt))
                 appendLine("  site         : ${site?.name ?: "—"}")
+                appendLine("  GUESS        : ${guess(event, site, sites)}")
                 appendLine("  actual floor : ${event.actualFloor ?: "— not labelled —"}")
-                appendLine("  descent 4min : ${format(event.descentRiseHpa)} hPa → ${levels(event, site)}")
-                appendLine("  descent 8min : ${format(event.descentRiseLongHpa)} hPa")
-                appendLine("  descent yaw  : ${event.descentYawDeg?.toInt() ?: "—"}° (ramp spiral)")
-                appendLine("  climb began  : ${seconds(event.descentStartedBeforeEndMs)} before end")
+                appendLine("  climb        : ${format(event.descentRiseHpa)} hPa over ${seconds(event.climbSeconds?.times(1000))}")
+                appendLine("  climb yaw    : ${event.descentYawDeg?.toInt() ?: "—"}°")
                 appendLine("  deepest point: ${seconds(event.arrivedBeforeEndMs)} before end")
-                appendLine("  entry rise   : ${format(event.entryRiseHpa)} hPa (gps-sliced)")
+                appendLine("  underground? : ${underground(event)}")
                 appendLine("  whole drive  : ${format(event.wholeDriveRiseHpa)} hPa (terrain)")
-                appendLine("  yaw in garage: ${event.yawSinceEntry?.toInt() ?: "—"}°")
-                appendLine("  yaw total    : ${event.yawDegrees.toInt()}°")
                 appendLine("  drive length : ${seconds(event.durationMs)}")
-                appendLine("  gps lost     : ${seconds(event.gpsLostBeforeEndMs)} before stopping")
+                appendLine("  gps silent   : ${seconds(event.gpsLostBeforeEndMs)} before end")
                 appendLine("  samples      : ${event.pressureSamples.size}")
                 appendLine("  wifi APs     : ${event.wifi.size} (scan ${event.wifiScanAgeSeconds ?: "?"}s old)")
                 appendLine("  joined wifi  : ${event.connectedWifi ?: "none"}")
@@ -195,34 +191,44 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * The labelled drives grouped by garage, then by floor.
+     * How often the guess is right, then the labelled drives grouped by garage.
      *
-     * Grouped by garage and not only by floor, because levels are spaced differently
-     * in different buildings: pooling every site together compares a three-metre
-     * apartment level against a four-and-a-half-metre department store one and makes
-     * the ranges overlap for a reason that has nothing to do with the sensor.
-     *
-     * Within one site this is the whole question in a few lines. Floors are tellable
-     * apart here only if two floors' ranges do not touch.
+     * The score comes first because it is the only line that says whether any of this
+     * works. It is leave-one-out: every drive is predicted by a model refitted without
+     * it, so it is what the app would have said before being told.
      */
     private fun StringBuilder.appendSeparation(events: List<ParkingEvent>) {
-        val sites = ParkingSites.group(events).filter { it.labelled.isNotEmpty() }
-        if (sites.isEmpty()) return
+        val sites = ParkingSites.group(events)
+        val labelled = sites.filter { it.labelled.isNotEmpty() }
+        if (labelled.isEmpty()) return
+
+        val score = FloorModel.accuracy(sites)
+        val model = FloorModel.fit(sites)
         appendLine("═".repeat(34))
-        appendLine("BY SITE — hPa per level is measured")
-        appendLine("per garage, never assumed.")
-        appendLine()
-        sites.forEach { site ->
-            appendLine("${site.name}  (${site.events.size} drives)")
-            val perLevel = site.hPaPerLevel
+        if (score.total > 0) {
+            appendLine("SCORE (each drive predicted by a model")
+            appendLine("refitted without it)")
             appendLine(
-                if (perLevel == null) {
-                    "  hPa/level: — (no labelled basement park yet)"
-                } else {
-                    "  hPa/level: %.2f  from %d drive(s)".format(perLevel, site.calibrationDrives)
-                },
+                "  exact      : %d/%d  (%d%%)".format(
+                    score.exact, score.total, 100 * score.exact / score.total,
+                ),
             )
-            appendLine("  floor  n   descent4min   yaw4min")
+            appendLine(
+                "  within 1   : %d/%d  (%d%%)".format(
+                    score.withinOne, score.total, 100 * score.withinOne / score.total,
+                ),
+            )
+            appendLine("  hPa/level  : %.2f from %d drives".format(
+                model.hPaPerLevel(null), model.calibrationDrives,
+            ))
+            appendLine()
+        }
+        appendLine("BY SITE")
+        appendLine()
+        labelled.forEach { site ->
+            appendLine("${site.name}  (${site.events.size} drives)")
+            appendLine("  hPa/level here: %.2f".format(model.hPaPerLevel(site.name)))
+            appendLine("  floor  n   climb hPa     climb yaw")
             site.labelled
                 .groupBy { it.actualFloor!!.lowercase() }
                 .toSortedMap()
@@ -244,23 +250,20 @@ class MainActivity : AppCompatActivity() {
         appendLine()
     }
 
-    /**
-     * Levels down, converted with this garage's own spacing where it is known.
-     *
-     * The nominal 0.36 hPa is a starting guess and is marked as one, because at a
-     * site with taller levels it reads a floor too deep — which is the entire reason
-     * calibration is per garage.
-     */
-    private fun levels(event: ParkingEvent, site: ParkingSites.Site?): String {
-        val rise = event.descentRiseHpa ?: return "—"
-        // Fitted without this drive when this drive is one of the labelled ones, so the
-        // figure printed next to a known floor is a prediction and not an echo.
-        val perLevel = site?.hPaPerLevelExcluding(event.id.takeIf { event.actualFloor != null })
-        return if (perLevel == null || perLevel <= 0f) {
-            "%.1f levels (nominal 0.36)".format(rise / ParkingEvent.HPA_PER_FLOOR)
-        } else {
-            "%.1f levels (site %.2f)".format(rise / perLevel, perLevel)
-        }
+    /** The estimate, from a model that has not been shown this drive's own label. */
+    private fun guess(
+        event: ParkingEvent,
+        site: ParkingSites.Site?,
+        sites: List<ParkingSites.Site>,
+    ): String {
+        val model = FloorModel.fit(sites, excludeId = event.id.takeIf { event.actualFloor != null })
+        return model.label(event, site?.name) ?: "—"
+    }
+
+    private fun underground(event: ParkingEvent) = when (event.wentUnderground) {
+        true -> "yes (satellites silent)"
+        false -> "no (satellites held)"
+        null -> "unknown (no fix all drive)"
     }
 
     private fun range(values: List<Float>): String =

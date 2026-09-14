@@ -87,10 +87,12 @@ data class ParkingEvent(
         }
 
     /**
-     * Pressure rise since entering the structure, in hPa. The floor signal proper.
+     * Pressure rise from the last satellite fix to the end of the recording.
      *
-     * Measured from the last satellite fix rather than the drive's high point, so
-     * hills along the way cancel out and only what happened under the roof is left.
+     * Superseded by [descent] and kept only as a record of a wrong idea: satellites
+     * turned out to fall silent anywhere from twelve seconds to six minutes before the
+     * car stopped, so this measured a whole ramp on one drive and a parked car on the
+     * next.
      */
     val entryRiseHpa: Float?
         get() {
@@ -98,10 +100,6 @@ data class ParkingEvent(
             if (segment.size < 2) return null
             return segment.last().hPa - segment.first().hPa
         }
-
-    /** Rough levels below the entrance, at a nominal 3 m each. */
-    val estimatedFloorsDown: Float?
-        get() = entryRiseHpa?.let { it / HPA_PER_FLOOR }
 
     /**
      * How long before parking satellites were lost, in ms.
@@ -142,70 +140,112 @@ data class ParkingEvent(
         }
 
     /**
-     * The deepest point in the last [windowMs] of the recording, and the shallowest
-     * point before it.
+     * The climb into the parking level: where the car arrived, and where it went in.
      *
-     * The recording does not end where the car stops. It ends when the car's
-     * Bluetooth drops, and that can be minutes later, with the phone already walking
-     * up out of the garage — a climb back up the stairs cancels the drive down the
-     * ramp exactly, which is how one B5F park measured 2.26 hPa and another, in the
-     * same garage, measured 0.00.
+     * Two end points had to be found rather than assumed, and the recordings decided
+     * both.
      *
-     * So the arrival is not the last sample: it is the highest pressure reached. The
-     * entrance is the lowest pressure before that. Everything after the peak is the
-     * walk out, and is deliberately ignored.
+     * The arrival is not the last sample. The recording ends when the car's Bluetooth
+     * drops, which can be minutes after the car stopped and after the walk up out of
+     * the garage — and a climb up the stairs cancels the drive down the ramp exactly,
+     * which is how one B5F park measured 2.26 hPa and another, in the same garage,
+     * measured 0.00. So the arrival is the highest pressure reached, searched over the
+     * last [PEAK_WINDOW_MS] only: a search over ten minutes instead found the start of
+     * a short drive that had begun in a deeper garage than it ended in.
+     *
+     * The entrance is not a fixed time earlier either. One garage's descent takes
+     * ninety seconds and another's four hundred, so a fixed window clipped one or
+     * swallowed the hill before the other. Instead the walk back from the arrival
+     * continues while the climb holds, and stops where pressure turns back down by
+     * more than [CLIMB_TOLERANCE_HPA] — the point where the car was last going down
+     * rather than up.
      */
-    fun descent(windowMs: Long): Descent? {
-        val samples = smoothed
-        if (samples.size < 2) return null
-        val end = samples.last().elapsedMs
-        val window = samples.filter { it.elapsedMs >= end - windowMs }
-        if (window.size < 2) return null
+    val descent: Descent? by lazy(LazyThreadSafetyMode.NONE) { computeDescent() }
 
-        val peakIndex = window.indices.maxBy { window[it].hPa }
-        val approach = window.subList(0, peakIndex + 1)
-        val low = approach.minBy { it.hPa }
-        val peak = window[peakIndex]
+    private fun computeDescent(): Descent? {
+        val samples = smoothed
+        if (samples.size < 3) return null
+        val end = samples.last().elapsedMs
+
+        val tail = samples.indices.filter { samples[it].elapsedMs >= end - PEAK_WINDOW_MS }
+        if (tail.size < 2) return null
+        val deepest = tail.max { samples[it].hPa }
+        val arrival = samples[deepest]
+
+        var lowest = deepest
+        var index = deepest
+        while (index >= 0 && arrival.elapsedMs - samples[index].elapsedMs <= MAX_CLIMB_MS) {
+            val hPa = samples[index].hPa
+            if (hPa < samples[lowest].hPa) {
+                lowest = index
+            } else if (hPa > samples[lowest].hPa + CLIMB_TOLERANCE_HPA) {
+                break
+            }
+            index--
+        }
+        val entrance = samples[lowest]
+
         return Descent(
-            riseHpa = peak.hPa - low.hPa,
-            yawDeg = peak.yawDeg - low.yawDeg,
-            startedBeforeEndMs = end - low.elapsedMs,
-            arrivedBeforeEndMs = end - peak.elapsedMs,
+            riseHpa = arrival.hPa - entrance.hPa,
+            yawDeg = arrival.yawDeg - entrance.yawDeg,
+            climbMs = arrival.elapsedMs - entrance.elapsedMs,
+            arrivedBeforeEndMs = end - arrival.elapsedMs,
         )
     }
 
+    /** The last index holding the largest value, so a plateau resolves to its end. */
+    private inline fun List<Int>.max(value: (Int) -> Float): Int {
+        var best = first()
+        forEach { if (value(it) >= value(best)) best = it }
+        return best
+    }
+
     /**
-     * One reading of the descent.
+     * One reading of the climb.
      *
      * [arrivedBeforeEndMs] is the diagnostic that matters most: it is how long the
-     * car's Bluetooth stayed up after the car stopped, and until this was visible the
-     * estimate looked like a broken barometer rather than a misplaced end point.
+     * car's Bluetooth stayed up after the car reached its lowest point, and until that
+     * was visible the estimate looked like a broken barometer rather than a misplaced
+     * end point.
      */
     data class Descent(
         val riseHpa: Float,
         val yawDeg: Float,
-        val startedBeforeEndMs: Long,
+        val climbMs: Long,
         val arrivedBeforeEndMs: Long,
     )
 
-    val descentRiseHpa: Float? get() = descent(RAMP_WINDOW_MS)?.riseHpa
-    val descentRiseLongHpa: Float? get() = descent(LONG_RAMP_WINDOW_MS)?.riseHpa
-    val descentFloorsDown: Float? get() = descentRiseHpa?.let { it / HPA_PER_FLOOR }
+    val descentRiseHpa: Float? get() = descent?.riseHpa
+
+    /**
+     * Whether the car went under a roof at all, decided by how long satellites stayed
+     * silent before the recording ended.
+     *
+     * Pressure cannot answer this on its own: over half the surface parks recorded a
+     * climb of half a level or more in their last minutes, because a road that runs
+     * downhill into a destination looks exactly like a ramp. Satellite silence does
+     * answer it — across the labelled drives, surface parks fell silent for at most
+     * 64 seconds and underground parks for at least 101, one exception each way.
+     *
+     * Null when no satellite fix was ever seen, which leaves only the pressure.
+     */
+    val wentUnderground: Boolean?
+        get() = gpsLostBeforeEndMs?.let { it >= UNDERGROUND_GPS_SILENCE_MS }
 
     /**
      * Yaw turned between the entrance and the deepest point.
      *
-     * The second dimension, and the one that tells a ramp from a hill: a barometer
-     * cannot distinguish driving down into a garage from driving down a slope, but a
-     * garage is reached by spiralling and a road is not.
+     * Kept as a second dimension, though it has not earned a place in the estimate: a
+     * barometer cannot tell a ramp from a hill, but several garages here descend in a
+     * straight line and read almost no turn at all.
      */
-    val descentYawDeg: Float? get() = descent(RAMP_WINDOW_MS)?.yawDeg
+    val descentYawDeg: Float? get() = descent?.yawDeg
 
-    /** How long before the recording ended the climb began. */
-    val descentStartedBeforeEndMs: Long? get() = descent(RAMP_WINDOW_MS)?.startedBeforeEndMs
+    /** How long the climb itself took — ninety seconds in one garage, four hundred in another. */
+    val climbSeconds: Long? get() = descent?.let { it.climbMs / 1000 }
 
     /** How long the car's radio stayed up after the car reached its lowest point. */
-    val arrivedBeforeEndMs: Long? get() = descent(RAMP_WINDOW_MS)?.arrivedBeforeEndMs
+    val arrivedBeforeEndMs: Long? get() = descent?.arrivedBeforeEndMs
 
     /** Yaw accumulated after entry only, where a spiral ramp actually shows up. */
     val yawSinceEntry: Float?
@@ -225,15 +265,13 @@ data class ParkingEvent(
         put("secondsSinceLastFix", secondsSinceLastFix ?: JSONObject.NULL)
         put("wholeDriveRiseHpa", wholeDriveRiseHpa?.toDouble() ?: JSONObject.NULL)
         put("entryRiseHpa", entryRiseHpa?.toDouble() ?: JSONObject.NULL)
-        put("estimatedFloorsDown", estimatedFloorsDown?.toDouble() ?: JSONObject.NULL)
         put("yawSinceEntry", yawSinceEntry?.toDouble() ?: JSONObject.NULL)
         put("lastGpsFixElapsedMs", lastGpsFixElapsedMs ?: JSONObject.NULL)
         put("gpsLostBeforeEndMs", gpsLostBeforeEndMs ?: JSONObject.NULL)
+        put("wentUnderground", wentUnderground ?: JSONObject.NULL)
         put("durationMs", durationMs ?: JSONObject.NULL)
         put("descentRiseHpa", descentRiseHpa?.toDouble() ?: JSONObject.NULL)
-        put("descentRiseLongHpa", descentRiseLongHpa?.toDouble() ?: JSONObject.NULL)
-        put("descentFloorsDown", descentFloorsDown?.toDouble() ?: JSONObject.NULL)
-        put("descentStartedBeforeEndMs", descentStartedBeforeEndMs ?: JSONObject.NULL)
+        put("climbSeconds", climbSeconds ?: JSONObject.NULL)
         put("descentYawDeg", descentYawDeg?.toDouble() ?: JSONObject.NULL)
         put("arrivedBeforeEndMs", arrivedBeforeEndMs ?: JSONObject.NULL)
         put(
@@ -263,17 +301,34 @@ data class ParkingEvent(
 
     companion object {
         /**
-         * About 3 m of air per parking level. Real spacing varies by building, which
-         * is exactly what repeat visits are meant to calibrate — this constant is a
-         * starting guess, not a claim.
+         * How far back to look for the deepest point.
+         *
+         * Short, because parking is the last thing that happens. Ten minutes of
+         * searching found the beginning of a ten-minute drive that had started in a
+         * deeper garage than it finished in, and called that the arrival.
          */
-        const val HPA_PER_FLOOR = 0.36f
+        const val PEAK_WINDOW_MS = 120_000L
 
-        /** A ramp taken at walking pace: five levels in four minutes. */
-        const val RAMP_WINDOW_MS = 240_000L
+        /**
+         * How far pressure may fall back before the climb counts as over.
+         *
+         * Half a hPa is roughly one level. Below that the walk back stopped inside
+         * long ramps at the dip between two turns; above it, it ran out of the garage
+         * and back onto the road.
+         */
+        const val CLIMB_TOLERANCE_HPA = 0.50f
 
-        /** The same ramp behind a queue on a Saturday. */
-        const val LONG_RAMP_WINDOW_MS = 480_000L
+        /** A hard stop on the walk back. No garage ramp takes twenty minutes. */
+        const val MAX_CLIMB_MS = 1_200_000L
+
+        /**
+         * Satellite silence that means a roof.
+         *
+         * Fitted, not guessed: of the labelled drives, surface parks went silent for
+         * at most 64 s and underground parks for at least 101 s, with a single
+         * exception on each side.
+         */
+        const val UNDERGROUND_GPS_SILENCE_MS = 90_000L
 
         private fun median(values: List<Float>): Float =
             values.sorted()[values.size / 2]

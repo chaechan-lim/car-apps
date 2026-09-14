@@ -10,7 +10,34 @@ Android Auto vehicle data probe. Install on a **phone**, not the car.
 `parking-probe` uses no Android Auto at all, so none of the caveats below apply to
 it: sideload it, grant the permissions, pick the car's Bluetooth device, and drive.
 
-**This build, for the parking probe:**
+**This build, for the parking probe — the first one that names a floor.**
+
+Fitted on 38 recorded drives, 35 labelled. Scored leave-one-out, so every drive is
+predicted by a model refitted without it: **29/35 exactly right (83%), 34/35 within one
+floor (97%)**.
+
+- **Satellites decide underground, pressure decides how deep.** Pressure alone cannot
+  tell a garage ramp from a road running downhill into a destination — over half the
+  surface parks recorded half a level or more of climb. How long satellites stay silent
+  does tell them apart: across the labelled drives, surface parks went quiet for at most
+  64 s and underground parks for at least 101 s, one exception each way.
+- **The climb is found, not windowed.** One garage's descent takes 90 seconds and
+  another's 400, so any fixed window clipped one or swallowed the hill before the other.
+  The walk back from the deepest point now continues while the climb holds and stops
+  where pressure turns back down by more than half a hPa.
+- **The deepest point is searched over the last two minutes only.** Ten minutes found the
+  *start* of a short drive that had begun in a deeper garage than it ended in, and called
+  that the arrival.
+- **0.52 hPa per level, measured.** Not the 0.36 that three metres of air would give —
+  real garages put more than a storey between levels once ramp runs are counted. The
+  figure is refitted from every labelled drive on the device.
+- **Per-garage calibration was tried and measured worse** — 73% against 85% — because the
+  three garages with enough drives came out at 0.50, 0.50 and 0.54 hPa per level. A
+  site's own drives are now blended toward the global figure with a heavy prior, so a
+  garage has to earn its way out of it.
+- **The parked notification says a floor**, not a decimal count of levels.
+
+Earlier in this build:
 
 - **Share no longer kills the app.** The export used to travel inside the share
   intent, which crosses a Binder transaction capped near a megabyte; a few days of

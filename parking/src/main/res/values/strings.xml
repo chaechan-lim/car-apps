@@ -7,6 +7,7 @@
     <string name="recording_title">Recording this drive</string>
     <string name="recording_text">Pressure and turns, until the car disconnects</string>
     <string name="parked_title">Parked — what floor?</string>
-    <string name="parked_estimate">Estimated %.1f floors down. Tap to confirm.</string>
+    <string name="parked_estimate">Looks like %s. Tap to confirm.</string>
+    <string name="parked_surface">Looks like ground level. Tap to confirm.</string>
     <string name="parked_no_estimate">No pressure reading. Tap to record the floor.</string>
 </resources>
