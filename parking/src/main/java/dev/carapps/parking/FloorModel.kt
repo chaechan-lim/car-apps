@@ -6,43 +6,36 @@ import kotlin.math.roundToInt
 /**
  * Turns a measured climb into a floor.
  *
- * The conversion is learned from whatever drives have been labelled, and defaults to
+ * The conversion is learned from whatever drives have been labelled and defaults to
  * [DEFAULT_HPA_PER_LEVEL] until there are any. That number is not a textbook value:
- * it is the mean of the labelled drives recorded so far, which came out well above
- * the 0.36 hPa that three metres of air would give. Real garages put more than three
- * metres between levels once the ramp runs are counted.
+ * it is the mean of the drives recorded so far, and it came out well above the
+ * 0.36 hPa that three metres of air would give. Real garages put more than a storey
+ * between levels once the ramp runs are counted.
  *
- * A per-garage constant was tried first and measured worse — 73% against 85% —
- * because the three garages with enough drives to fit came out at 0.50, 0.50 and
- * 0.54 hPa per level, near enough to identical that fitting each one separately only
- * added the noise of its own few drives. So a site's own drives are blended toward
- * the global figure with a heavy prior ([SITE_PRIOR_WEIGHT]): a site has to
- * accumulate real evidence before it moves the answer, which is what a garage with
- * genuinely unusual spacing would eventually do.
+ * One constant, not one per garage. Per-garage calibration was tried twice and
+ * measured worse both times — 83% against 89% on 35 labelled drives — because the
+ * garages with enough drives to fit came out at 0.50, 0.51 and 0.54 hPa per level.
+ * Buildings differ in principle; these did not, and fitting each one separately only
+ * added the noise of its own few drives. If a garage with genuinely unusual spacing
+ * ever shows up, this is the place to bring that back — with enough drives from it to
+ * prove the case.
  */
 class FloorModel private constructor(
-    private val globalHpaPerLevel: Float,
-    private val siteHpaPerLevel: Map<String, Pair<Float, Int>>,
+    val hPaPerLevel: Float,
     val calibrationDrives: Int,
 ) {
-
-    /** hPa per level to use at [siteName], blended toward the global figure. */
-    fun hPaPerLevel(siteName: String?): Float {
-        val (siteValue, count) = siteName?.let { siteHpaPerLevel[it] } ?: return globalHpaPerLevel
-        return (count * siteValue + SITE_PRIOR_WEIGHT * globalHpaPerLevel) /
-            (count + SITE_PRIOR_WEIGHT)
-    }
 
     /**
      * Levels below ground, or 0 for a surface park. Null when nothing was measured.
      *
      * The satellite gate decides underground or not, and pressure only decides how
-     * deep. Handing the whole decision to pressure put half the surface parks
-     * underground.
+     * deep. Handing the whole decision to pressure put over half the surface parks
+     * underground: a road running downhill into a destination is indistinguishable
+     * from a ramp.
      */
-    fun levelsDown(event: ParkingEvent, siteName: String?): Int? {
+    fun levelsDown(event: ParkingEvent): Int? {
         val rise = event.descentRiseHpa ?: return null
-        val levels = rise / hPaPerLevel(siteName)
+        val levels = rise / hPaPerLevel
         return when {
             event.wentUnderground == false -> 0
             // No satellite marker at all: pressure alone, and it has to be worth half
@@ -53,85 +46,99 @@ class FloorModel private constructor(
     }
 
     /** "B4", "surface", or null — the form the estimate is worth showing in. */
-    fun label(event: ParkingEvent, siteName: String?): String? =
-        levelsDown(event, siteName)?.let { if (it == 0) "surface" else "B$it" }
-
-    /**
-     * How the model scores against the drives that carry a floor typed in by hand.
-     *
-     * Each drive is predicted from a model fitted without it, so this is what the app
-     * would have said before being told the answer.
-     */
-    data class Accuracy(val exact: Int, val withinOne: Int, val total: Int)
+    fun label(event: ParkingEvent): String? = levelsDown(event)?.let { floorName(it) }
 
     companion object {
 
         /**
-         * The mean of every labelled drive recorded so far, as a starting point.
+         * The mean of every labelled drive so far, as a starting point.
          *
-         * 0.52 hPa is about four and a half metres per level. That is more than a
-         * storey of air, and it is what the measurements say: the drop from street to
-         * the first level is deeper than the gaps between levels, and the ramp run is
-         * part of it.
+         * 0.52 hPa is about four and a half metres per level, which is more than a
+         * storey of air. The drop from street to the first level is deeper than the
+         * gaps between levels, and the ramp run is part of it.
          */
         const val DEFAULT_HPA_PER_LEVEL = 0.52f
 
-        /** How many drives of global evidence a site's own fit has to outweigh. */
-        const val SITE_PRIOR_WEIGHT = 10
+        fun floorName(levels: Int) = if (levels == 0) "surface" else "B$levels"
 
         fun fit(sites: List<ParkingSites.Site>, excludeId: Long? = null): FloorModel {
-            val ratios = mutableListOf<Float>()
-            val perSite = mutableMapOf<String, MutableList<Float>>()
-
-            sites.forEach { site ->
-                site.events.forEach { event ->
-                    if (event.id == excludeId) return@forEach
-                    val depth = ParkingSites.depthBelowGround(event.actualFloor.orEmpty())
-                    val rise = event.descentRiseHpa
-                    if (depth == null || depth < 1 || rise == null) return@forEach
-                    val ratio = rise / depth
-                    ratios += ratio
-                    perSite.getOrPut(site.name) { mutableListOf() } += ratio
-                }
-            }
-
-            val global = if (ratios.isEmpty()) {
-                DEFAULT_HPA_PER_LEVEL
-            } else {
-                ratios.average().toFloat()
+            val ratios = sites.flatMap { it.events }.mapNotNull { event ->
+                if (event.id == excludeId) return@mapNotNull null
+                val depth = ParkingSites.depthBelowGround(event.actualFloor.orEmpty())
+                if (depth == null || depth < 1) return@mapNotNull null
+                event.descentRiseHpa?.let { it / depth }
             }
             return FloorModel(
-                globalHpaPerLevel = global,
-                siteHpaPerLevel = perSite.mapValues { (_, values) ->
-                    values.average().toFloat() to values.size
-                },
+                hPaPerLevel = if (ratios.isEmpty()) DEFAULT_HPA_PER_LEVEL else ratios.average().toFloat(),
                 calibrationDrives = ratios.size,
             )
         }
 
         /**
-         * Leave-one-out accuracy over the labelled drives.
+         * How the barometer scores, and how a lookup table scores beside it.
          *
-         * Refitting without each drive is the only honest version. A model that has
-         * been told the answer reproduces it, and the first version of this screen
-         * would have reported a precision the app did not have.
+         * The second column is the point. On the drives recorded so far, predicting
+         * "whatever floor you usually take here" is right 30 times out of 35, against
+         * the barometer's 31 — which means the headline accuracy mostly measures a
+         * habit, not a sensor. The barometer earns its place only on the drives that
+         * break the habit, and those are exactly the drives where a person is confused
+         * about where they parked. Keeping both numbers on screen is the only way to
+         * see which is true as more drives arrive.
          */
-        fun accuracy(sites: List<ParkingSites.Site>): Accuracy {
+        fun score(sites: List<ParkingSites.Site>): Scores {
             var exact = 0
             var withinOne = 0
+            var habitExact = 0
+            var habitTotal = 0
+            var brokeHabit = 0
+            var brokeHabitRight = 0
             var total = 0
+
             sites.forEach { site ->
                 site.events.forEach { event ->
                     val actual = ParkingSites.depthBelowGround(event.actualFloor.orEmpty())
                         ?: return@forEach
-                    val predicted = fit(sites, excludeId = event.id).levelsDown(event, site.name)
+                    // Refitted without this drive: a model shown the answer reproduces it.
+                    val predicted = fit(sites, excludeId = event.id).levelsDown(event)
                         ?: return@forEach
                     total++
                     if (predicted == actual) exact++
                     if (abs(predicted - actual) <= 1) withinOne++
+
+                    val habit = site.usualDepthExcluding(event.id)
+                    if (habit != null) {
+                        habitTotal++
+                        if (habit == actual) habitExact++
+                        if (habit != actual) {
+                            brokeHabit++
+                            if (predicted == actual) brokeHabitRight++
+                        }
+                    }
                 }
             }
-            return Accuracy(exact, withinOne, total)
+            return Scores(
+                total = total,
+                exact = exact,
+                withinOne = withinOne,
+                habitTotal = habitTotal,
+                habitExact = habitExact,
+                brokeHabit = brokeHabit,
+                brokeHabitRight = brokeHabitRight,
+            )
         }
     }
+
+    /**
+     * [brokeHabitRight] out of [brokeHabit] is the number that says whether any of
+     * this is worth shipping: the drives where the usual floor was the wrong answer.
+     */
+    data class Scores(
+        val total: Int,
+        val exact: Int,
+        val withinOne: Int,
+        val habitTotal: Int,
+        val habitExact: Int,
+        val brokeHabit: Int,
+        val brokeHabitRight: Int,
+    )
 }

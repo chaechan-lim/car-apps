@@ -10,11 +10,23 @@ Android Auto vehicle data probe. Install on a **phone**, not the car.
 `parking-probe` uses no Android Auto at all, so none of the caveats below apply to
 it: sideload it, grant the permissions, pick the car's Bluetooth device, and drive.
 
-**This build, for the parking probe — the first one that names a floor.**
+**This build, for the parking probe — the first one that names a floor, and the first
+that reports how little that proves.**
 
-Fitted on 38 recorded drives, 35 labelled. Scored leave-one-out, so every drive is
-predicted by a model refitted without it: **29/35 exactly right (83%), 34/35 within one
-floor (97%)**.
+Fitted on 38 recorded drives, 35 labelled, from one phone, one person, ten days and
+**four underground garages**. Scored leave-one-out: **31/35 exactly right (89%), 34/35
+within one floor (97%)**.
+
+Read that number next to its rival. Predicting "whatever floor you usually take at this
+garage" — a lookup table with no sensor in it — scores **30/35 (86%)**. So the headline
+accuracy is mostly measuring a parking habit. The barometer earns its place on the four
+drives that broke the habit, where the lookup scores **0/4** and the barometer **3/4**
+exactly and 4/4 within one floor. Those are also the only drives where a person is
+actually confused about where they parked. Both numbers are now on the screen, so which
+one is true stays visible as drives accumulate.
+
+What is *not* established: a first visit to an unfamiliar underground garage, which is
+the case this is ultimately for. There are three such drives in the whole set.
 
 - **Satellites decide underground, pressure decides how deep.** Pressure alone cannot
   tell a garage ramp from a road running downhill into a destination — over half the
@@ -29,13 +41,13 @@ floor (97%)**.
   *start* of a short drive that had begun in a deeper garage than it ended in, and called
   that the arrival.
 - **0.52 hPa per level, measured.** Not the 0.36 that three metres of air would give —
-  real garages put more than a storey between levels once ramp runs are counted. The
-  figure is refitted from every labelled drive on the device.
-- **Per-garage calibration was tried and measured worse** — 73% against 85% — because the
-  three garages with enough drives came out at 0.50, 0.50 and 0.54 hPa per level. A
-  site's own drives are now blended toward the global figure with a heavy prior, so a
-  garage has to earn its way out of it.
-- **The parked notification says a floor**, not a decimal count of levels.
+  real garages put more than a storey between levels once ramp runs are counted.
+- **Per-garage calibration is gone.** It measured worse twice — 83% against 89% — because
+  the garages with enough drives came out at 0.50, 0.51 and 0.54 hPa per level. Buildings
+  differ in principle; these do not, and fitting each separately only added the noise of
+  its own few drives.
+- **The parked notification says a floor**, not a decimal count of levels, and says so
+  when that floor is not the usual one here.
 
 Earlier in this build:
 
@@ -55,16 +67,13 @@ Earlier in this build:
   a ramp from a hill but a spiral can.
 - **How long the car's radio stayed up past the deepest point**, which is the number
   that made the old estimate look like a failing sensor.
-- **Calibration per garage, not one constant everywhere.** Absolute pressure differs
-  between two places at the same height — weather, terrain, sensor offset — but none
-  of that reaches the estimate, which is a difference measured inside a single drive.
-  What does differ is metres per level: an apartment garage stacks levels about three
-  metres apart, a department store closer to four and a half, so the same 2.2 hPa is
-  five levels down in one and four in the other. Drives are now grouped by where they
-  ended, within 150 m of the last fix, and each site's hPa-per-level is fitted from
-  its own labelled drives. A garage can also be named by hand while labelling, which
-  overrides the guess and spreads to every drive that ended there.
-- **Levels-down is printed leaving that drive out of the fit**, so the figure beside a
+- **Drives are grouped by where they ended**, within 150 m of the last fix, and a
+  garage can be named by hand while labelling — which overrides the guess and spreads
+  to every drive that ended there. Absolute pressure differs between two places at the
+  same height, by weather, terrain and sensor offset, but none of that reaches the
+  estimate, which is a difference measured inside a single drive. Grouping was added to
+  calibrate each garage separately; that part was then measured and removed, above.
+- **Everything is printed leaving that drive out of the fit**, so a figure beside a
   known floor is a prediction rather than an echo of the label.
 - **A separation table per site.** If two floors' ranges overlap within one garage,
   the barometer cannot do this — that is the whole question, and it is now answered on

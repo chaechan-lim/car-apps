@@ -34,6 +34,24 @@ object ParkingSites {
         val labelled: List<ParkingEvent> get() = events.filter { it.actualFloor != null }
 
         val fix: ParkingEvent.Fix? get() = events.firstNotNullOfOrNull { it.lastLocation }
+
+        /**
+         * The floor most often parked on here, ignoring one drive.
+         *
+         * This is the rival to the whole barometer idea, and on the drives recorded so
+         * far it very nearly wins: people park on the same floor of the same garage,
+         * and a lookup table needs no sensor at all. It is kept as a predictor so its
+         * score stays visible beside the measured one, and as context — an estimate
+         * that disagrees with the usual floor is worth saying out loud, because an
+         * unusual floor is exactly when someone forgets where they parked.
+         */
+        fun usualDepthExcluding(id: Long?): Int? {
+            val depths = events
+                .filter { it.id != id }
+                .mapNotNull { depthBelowGround(it.actualFloor.orEmpty()) }
+            if (depths.isEmpty()) return null
+            return depths.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+        }
     }
 
     /**

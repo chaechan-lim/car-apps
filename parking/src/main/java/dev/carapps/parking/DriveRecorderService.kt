@@ -269,8 +269,7 @@ class DriveRecorderService : android.app.Service(), LocationListener {
         // has any. A floor, not a decimal count of levels: nobody parks on B4.7, and
         // the decimal invited a precision the estimate does not have.
         val sites = ParkingSites.group(EventStore(this).read())
-        val site = sites.firstOrNull { group -> group.events.any { it.id == event.id } }
-        val text = when (val floor = FloorModel.fit(sites).label(event, site?.name)) {
+        val text = when (val floor = FloorModel.fit(sites).label(event)) {
             null -> getString(R.string.parked_no_estimate)
             "surface" -> getString(R.string.parked_surface)
             else -> getString(R.string.parked_estimate, floor)

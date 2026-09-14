@@ -202,24 +202,42 @@ class MainActivity : AppCompatActivity() {
         val labelled = sites.filter { it.labelled.isNotEmpty() }
         if (labelled.isEmpty()) return
 
-        val score = FloorModel.accuracy(sites)
+        val score = FloorModel.score(sites)
         val model = FloorModel.fit(sites)
         appendLine("═".repeat(34))
         if (score.total > 0) {
             appendLine("SCORE (each drive predicted by a model")
             appendLine("refitted without it)")
             appendLine(
-                "  exact      : %d/%d  (%d%%)".format(
+                "  barometer exact : %d/%d  (%d%%)".format(
                     score.exact, score.total, 100 * score.exact / score.total,
                 ),
             )
             appendLine(
-                "  within 1   : %d/%d  (%d%%)".format(
+                "  within 1 floor  : %d/%d  (%d%%)".format(
                     score.withinOne, score.total, 100 * score.withinOne / score.total,
                 ),
             )
-            appendLine("  hPa/level  : %.2f from %d drives".format(
-                model.hPaPerLevel(null), model.calibrationDrives,
+            // The rival with no sensor in it. If this line matches the one above, the
+            // accuracy is measuring a parking habit and not a barometer.
+            if (score.habitTotal > 0) {
+                appendLine(
+                    "  usual-floor     : %d/%d  (%d%%)  <- no sensor".format(
+                        score.habitExact, score.habitTotal,
+                        100 * score.habitExact / score.habitTotal,
+                    ),
+                )
+            }
+            if (score.brokeHabit > 0) {
+                appendLine(
+                    "  unusual floors  : %d/%d right  <- the only".format(
+                        score.brokeHabitRight, score.brokeHabit,
+                    ),
+                )
+                appendLine("                     drives that need a sensor")
+            }
+            appendLine("  hPa/level       : %.2f from %d drives".format(
+                model.hPaPerLevel, model.calibrationDrives,
             ))
             appendLine()
         }
@@ -227,7 +245,9 @@ class MainActivity : AppCompatActivity() {
         appendLine()
         labelled.forEach { site ->
             appendLine("${site.name}  (${site.events.size} drives)")
-            appendLine("  hPa/level here: %.2f".format(model.hPaPerLevel(site.name)))
+            site.usualDepthExcluding(null)?.let {
+                appendLine("  usually parks on: ${FloorModel.floorName(it)}")
+            }
             appendLine("  floor  n   climb hPa     climb yaw")
             site.labelled
                 .groupBy { it.actualFloor!!.lowercase() }
@@ -250,14 +270,19 @@ class MainActivity : AppCompatActivity() {
         appendLine()
     }
 
-    /** The estimate, from a model that has not been shown this drive's own label. */
+    /**
+     * The estimate, from a model that has not been shown this drive's own label, and
+     * a note when it disagrees with the floor usually taken here.
+     */
     private fun guess(
         event: ParkingEvent,
         site: ParkingSites.Site?,
         sites: List<ParkingSites.Site>,
     ): String {
         val model = FloorModel.fit(sites, excludeId = event.id.takeIf { event.actualFloor != null })
-        return model.label(event, site?.name) ?: "—"
+        val guess = model.label(event) ?: return "—"
+        val usual = site?.usualDepthExcluding(event.id)?.let { FloorModel.floorName(it) }
+        return if (usual != null && usual != guess) "$guess  (usually $usual here)" else guess
     }
 
     private fun underground(event: ParkingEvent) = when (event.wentUnderground) {
