@@ -36,6 +36,24 @@ object ProbeController {
         probe?.start()
     }
 
+    /**
+     * Drops every subscription and takes them out again.
+     *
+     * Subscribing to car hardware without the matching permission does not throw and
+     * does not report: the listener is simply never called, which reads on screen as
+     * a value the car does not supply. Granting the permission afterwards does not
+     * revive that dead subscription, so the whole probe has to be taken down and put
+     * back up once the permission is in hand — otherwise the first answer, the wrong
+     * one, is the only answer the app will ever give.
+     */
+    fun restart(carContext: CarContext) {
+        probe?.stop()
+        probe = null
+        snapshot = null
+        start(carContext)
+        listeners.toList().forEach { it() }
+    }
+
     fun stop() {
         // A last write with the settled values, since this is where a drive ends.
         snapshot?.let { lastSaved = 0L; save(savedContext, it) }

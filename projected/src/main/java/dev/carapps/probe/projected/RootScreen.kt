@@ -1,5 +1,6 @@
 package dev.carapps.probe.projected
 
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.car.app.CarContext
 import androidx.car.app.CarToast
@@ -119,6 +120,26 @@ class RootScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleO
             )
         }
 
+        // On screen, not buried in the log. A field gated behind a permission this
+        // app has not been granted looks exactly like a field the car withholds, and
+        // the two were confused for weeks — so the thing that tells them apart
+        // belongs next to the readings rather than in a report nobody opens while
+        // driving.
+        val missing = CAR_PERMISSIONS.filter {
+            carContext.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            listBuilder.addItem(
+                Row.Builder()
+                    .setTitle("${missing.size} permission(s) not granted")
+                    .addText(
+                        missing.joinToString { it.substringAfterLast('.') } +
+                            " — answer the prompt on the phone"
+                    )
+                    .build()
+            )
+        }
+
         val hidden = (answered.size - room).coerceAtLeast(0)
         listBuilder.addItem(
             Row.Builder()
@@ -163,21 +184,43 @@ class RootScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleO
     }
 
     private fun requestCarPermissions() {
-        val permissions = listOf(
-            "com.google.android.gms.permission.CAR_FUEL",
-            "com.google.android.gms.permission.CAR_SPEED",
-            "com.google.android.gms.permission.CAR_MILEAGE",
-            android.Manifest.permission.ACCESS_FINE_LOCATION,
-        )
+        val permissions = CAR_PERMISSIONS
+        val alreadyHeld = permissions.all {
+            carContext.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
+        }
         // Android Auto surfaces this prompt on the phone, not the head unit.
         carContext.requestPermissions(permissions) { granted, rejected ->
             Log.i(TAG, "permissions granted=$granted rejected=$rejected")
+            // Re-subscribe, or the grant changes nothing. The probe was started
+            // before the prompt so the screen would have something to show while it
+            // went unanswered, and subscriptions taken without permission fail
+            // silently and stay failed. Every field gated behind CAR_FUEL,
+            // CAR_SPEED or CAR_MILEAGE therefore reported "no response" on a car
+            // that supplies it — this app called a permission of its own a property
+            // of the vehicle, and it did so in the one report meant to settle what
+            // the vehicle supplies.
+            if (!alreadyHeld && granted.isNotEmpty()) {
+                Log.i(TAG, "re-subscribing now that permissions are held")
+                ProbeController.restart(carContext)
+            }
             invalidate()
         }
     }
 
     private companion object {
         const val TAG = "CarProbe"
+
+        /**
+         * Android Auto gates car data behind these, and a subscription taken without
+         * them fails without saying so. Declared in the manifest as well; this list is
+         * what gets requested and what gets checked on screen.
+         */
+        val CAR_PERMISSIONS = listOf(
+            "com.google.android.gms.permission.CAR_FUEL",
+            "com.google.android.gms.permission.CAR_SPEED",
+            "com.google.android.gms.permission.CAR_MILEAGE",
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+        )
 
         /** CarHardwareManager, and therefore everything this app measures. */
         const val REQUIRED_API_LEVEL = 3
