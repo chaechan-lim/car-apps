@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "dev.carapps.probe.automotive"
-    compileSdk = 35
+    compileSdk = 36
 
     // Compiles against the android.car system library. Requires the Android
     // Automotive OS system image / SDK add-on to be installed.
@@ -14,7 +14,7 @@ android {
     defaultConfig {
         applicationId = "dev.carapps.probe.automotive"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
     }

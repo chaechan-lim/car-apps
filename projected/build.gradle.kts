@@ -5,14 +5,14 @@ plugins {
 
 android {
     namespace = "dev.carapps.probe.projected"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "dev.carapps.probe.projected"
         minSdk = 29
-        targetSdk = 35
-        versionCode = 18
-        versionName = "0.1.17"
+        targetSdk = 36
+        versionCode = 19
+        versionName = "0.1.18"
     }
 
     signingConfigs {

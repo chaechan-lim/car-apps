@@ -307,7 +307,14 @@ class MainActivity : AppCompatActivity() {
     private fun timestamp(millis: Long) =
         SimpleDateFormat("MM-dd HH:mm", Locale.US).format(Date(millis))
 
-    /** Bonded devices only: the car is already paired, and scanning would be noise. */
+    /**
+     * Bonded devices only: the car is already paired, and scanning would be noise.
+     *
+     * Suppressed because the guard is the first statement and lint cannot follow it
+     * through [hasBluetoothPermission]; each call is additionally wrapped, so a
+     * revoked permission degrades to an empty list rather than a crash.
+     */
+    @android.annotation.SuppressLint("MissingPermission")
     private fun pickCar() {
         if (!hasBluetoothPermission()) {
             Toast.makeText(this, "Grant Bluetooth permission first", Toast.LENGTH_LONG).show()
@@ -395,7 +402,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestPermissions() {
         val wanted = buildList {
+            // Both, because a request for FINE alone is ignored on Android 12 and up.
             add(Manifest.permission.ACCESS_FINE_LOCATION)
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 add(Manifest.permission.BLUETOOTH_CONNECT)
             }

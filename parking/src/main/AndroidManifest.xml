@@ -10,11 +10,24 @@
       location-derived below API 33. The point of the app is what happens after
       GPS dies, so this is only ever the last outdoor reading.
     -->
+    <!--
+      Both, and not only FINE. Since Android 12 a request for FINE alone is ignored
+      by the system rather than refused, and the satellite-silence gate that decides
+      underground or not is built entirely on getting fine fixes while outdoors.
+    -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission
         android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="33" />
+
+    <!--
+      Required by WifiManager.getScanResults, and its absence is why every recorded
+      drive reported zero access points. The call threw, the throw was swallowed, and
+      an empty map reads exactly like a garage with no Wi-Fi in it.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />

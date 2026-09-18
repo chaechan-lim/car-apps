@@ -31,7 +31,7 @@ jobs:
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
-          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
 
       # The bundle is what Play needs: new apps cannot be published as an APK.
       # The APKs stay for the DHU and for direct installs.
@@ -42,7 +42,7 @@ jobs:
 
       - name: Verify release signature
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs \
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs \
             projected/build/outputs/apk/release/projected-release.apk
 
       - name: Stage artifacts

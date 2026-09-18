@@ -15,18 +15,25 @@ import android.net.wifi.WifiManager
  * Scans are throttled by the platform, so this reads the last results rather than
  * forcing a fresh scan. At the moment of parking the phone has usually just scanned
  * anyway, having lost the car's network.
+ *
+ * Every failure here is logged rather than absorbed. Thirty-eight recorded drives
+ * reported zero access points and it was put down to scan throttling; the real cause
+ * was a missing ACCESS_WIFI_STATE declaration, and the only reason it went unnoticed
+ * for weeks is that the exception was being swallowed into an empty map. An empty
+ * result and a failed call must not look the same.
  */
 class WifiFingerprint(private val context: Context) {
 
-    fun capture(): Map<String, Int> = runCatching {
-        val manager = context.applicationContext
-            .getSystemService(Context.WIFI_SERVICE) as WifiManager
+    // Suppressed at the call site because [attempt] catches and logs a rejected
+    // permission; lint cannot see that through the lambda.
+    @android.annotation.SuppressLint("MissingPermission")
+    fun capture(): Map<String, Int> = attempt("scanResults") { manager ->
         @Suppress("DEPRECATION")
         manager.scanResults
             .sortedByDescending { it.level }
             .take(MAX_APS)
             .associate { it.BSSID to it.level }
-    }.getOrDefault(emptyMap())
+    } ?: emptyMap()
 
     /**
      * Age of the freshest scan result, in seconds.
@@ -35,13 +42,12 @@ class WifiFingerprint(private val context: Context) {
      * fingerprint taken from the street above would look like a basement one and
      * quietly poison the data. Recording the age makes that detectable instead.
      */
-    fun scanAgeSeconds(): Long? = runCatching {
-        val manager = context.applicationContext
-            .getSystemService(Context.WIFI_SERVICE) as WifiManager
+    @android.annotation.SuppressLint("MissingPermission")
+    fun scanAgeSeconds(): Long? = attempt("scanAge") { manager ->
         @Suppress("DEPRECATION")
-        val newest = manager.scanResults.maxOfOrNull { it.timestamp } ?: return null
+        val newest = manager.scanResults.maxOfOrNull { it.timestamp } ?: return@attempt null
         (android.os.SystemClock.elapsedRealtime() * 1000 - newest) / 1_000_000
-    }.getOrNull()
+    }
 
     /**
      * The network the phone is actually joined to, if any.
@@ -51,18 +57,32 @@ class WifiFingerprint(private val context: Context) {
      * office garage sometimes does have coverage, and because a null is itself a
      * distinguishing observation between the two sites.
      */
-    fun connectedNetwork(): String? = runCatching {
-        val manager = context.applicationContext
-            .getSystemService(Context.WIFI_SERVICE) as WifiManager
+    fun connectedNetwork(): String? = attempt("connectionInfo") { manager ->
         @Suppress("DEPRECATION")
-        val info = manager.connectionInfo ?: return null
-        val bssid = info.bssid ?: return null
+        val info = manager.connectionInfo ?: return@attempt null
+        val bssid = info.bssid ?: return@attempt null
         // The platform hands back this placeholder when it will not disclose the AP.
-        if (bssid == "02:00:00:00:00:00") return null
+        if (bssid == "02:00:00:00:00:00") return@attempt null
         @Suppress("DEPRECATION")
         val ssid = info.ssid?.trim('"').orEmpty()
         if (ssid.isEmpty() || ssid == "<unknown ssid>") bssid else "$ssid ($bssid)"
-    }.getOrNull()
+    }
+
+    /**
+     * Runs a Wi-Fi call, and says so in the log when it fails.
+     *
+     * The failure must not be indistinguishable from a null answer. That is the
+     * mistake this whole class is a correction of.
+     */
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun <T> attempt(what: String, block: (WifiManager) -> T?): T? = try {
+        val manager = context.applicationContext
+            .getSystemService(Context.WIFI_SERVICE) as WifiManager
+        block(manager)
+    } catch (t: Throwable) {
+        DebugLog.write(context, "wifi $what failed: ${t.javaClass.simpleName}: ${t.message}")
+        null
+    }
 
     private companion object {
         /** Enough to identify a spot; beyond this the weak tail is mostly noise. */

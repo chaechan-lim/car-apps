@@ -219,7 +219,10 @@ class RootScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleO
             "com.google.android.gms.permission.CAR_FUEL",
             "com.google.android.gms.permission.CAR_SPEED",
             "com.google.android.gms.permission.CAR_MILEAGE",
+            // Both location permissions, because asking for FINE on its own is
+            // ignored outright on Android 12 and up.
             android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION,
         )
 
         /** CarHardwareManager, and therefore everything this app measures. */

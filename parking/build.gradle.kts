@@ -5,14 +5,14 @@ plugins {
 
 android {
     namespace = "dev.carapps.parking"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "dev.carapps.parking"
         minSdk = 29
-        targetSdk = 35
-        versionCode = 10
-        versionName = "0.1.9"
+        targetSdk = 36
+        versionCode = 11
+        versionName = "0.1.10"
     }
 
     signingConfigs {

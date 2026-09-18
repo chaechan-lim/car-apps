@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "dev.carapps.probe.core"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 29
