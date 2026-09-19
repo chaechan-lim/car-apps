@@ -95,7 +95,12 @@ class RootScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleO
             .getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_LIST)
 
         val listBuilder = ItemList.Builder()
-        val answered = snapshot.fields.filter { it.status == FieldStatus.SUCCESS }
+        // Errors alongside the readings, because an error row now carries the reason
+        // the subscription failed, and the host forbids drilling down while moving —
+        // which is exactly when the interesting failures happen.
+        val answered = snapshot.fields.filter {
+            it.status == FieldStatus.SUCCESS || it.status == FieldStatus.ERROR
+        }
 
         // One row is always spent on the drill-down, so the readings get the rest.
         val room = (limit - 1).coerceAtLeast(1)
@@ -103,7 +108,13 @@ class RootScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleO
             listBuilder.addItem(
                 Row.Builder()
                     .setTitle(field.label)
-                    .addText(field.value)
+                    .addText(
+                        if (field.status == FieldStatus.ERROR) {
+                            "${field.status.display} ${field.value}"
+                        } else {
+                            field.value
+                        }
+                    )
                     .build()
             )
         }
@@ -161,6 +172,17 @@ class RootScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleO
         .setStartHeaderAction(Action.APP_ICON)
         .apply {
             if (logAction) {
+                // Retry exists because of how slowly this app can be iterated on: a
+                // templated app reaches a real car only through Play, so every guess
+                // used to cost an upload and a drive. Granting a permission on the
+                // phone and re-subscribing from here settles a question in seconds
+                // instead.
+                addEndHeaderAction(
+                    Action.Builder()
+                        .setTitle("Retry")
+                        .setOnClickListener { retry() }
+                        .build()
+                )
                 addEndHeaderAction(
                     Action.Builder()
                         .setTitle("Log")
@@ -170,6 +192,25 @@ class RootScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleO
             }
         }
         .build()
+
+    /** Asks again for anything missing, then re-subscribes with whatever is held now. */
+    private fun retry() {
+        val missing = CAR_PERMISSIONS.filter {
+            carContext.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            ProbeController.restart(carContext)
+            CarToast.makeText(carContext, "Re-subscribed", CarToast.LENGTH_SHORT).show()
+        } else {
+            CarToast.makeText(
+                carContext,
+                "Answer the permission prompt on the phone",
+                CarToast.LENGTH_LONG,
+            ).show()
+            requestCarPermissions()
+        }
+        invalidate()
+    }
 
     /**
      * The report is written automatically every 15 seconds, so this is only a way to

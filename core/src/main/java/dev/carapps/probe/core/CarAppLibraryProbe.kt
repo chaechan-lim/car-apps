@@ -1,5 +1,6 @@
 package dev.carapps.probe.core
 
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import androidx.car.app.CarContext
@@ -139,18 +140,32 @@ class CarAppLibraryProbe(
             mark(GROUP_MODEL, "exteriorDimensions", FieldStatus.UNSUPPORTED_HOST)
         }
 
-        // Continuous listeners.
-        carInfo.addEnergyLevelListener(executor, energyLevelListener)
-        carInfo.addSpeedListener(executor, speedListener)
-        carInfo.addMileageListener(executor, mileageListener)
-        carInfo.addTollListener(executor, tollListener)
-        carInfo.addEvStatusListener(executor, evStatusListener)
+        // Continuous listeners. Each subscription reports its own outcome, because a
+        // subscription that was refused and a car that stays quiet produce the same
+        // empty row — and telling those apart is the only thing this app is for.
+        subscribe(GROUP_ENERGY, PERMISSION_FUEL) {
+            carInfo.addEnergyLevelListener(executor, energyLevelListener)
+        }
+        subscribe(GROUP_SPEED, PERMISSION_SPEED) {
+            carInfo.addSpeedListener(executor, speedListener)
+        }
+        subscribe(GROUP_MILEAGE, PERMISSION_MILEAGE) {
+            carInfo.addMileageListener(executor, mileageListener)
+        }
+        subscribe(GROUP_TOLL, null) {
+            carInfo.addTollListener(executor, tollListener)
+        }
+        subscribe(GROUP_EV, PERMISSION_FUEL) {
+            carInfo.addEvStatusListener(executor, evStatusListener)
+        }
 
         val sensors = carHardware.carSensors
-        sensors.addAccelerometerListener(CarSensors.UPDATE_RATE_NORMAL, executor, accelerometerListener)
-        sensors.addGyroscopeListener(CarSensors.UPDATE_RATE_NORMAL, executor, gyroscopeListener)
-        sensors.addCompassListener(CarSensors.UPDATE_RATE_NORMAL, executor, compassListener)
-        sensors.addCarHardwareLocationListener(CarSensors.UPDATE_RATE_NORMAL, executor, locationListener)
+        subscribe(GROUP_SENSORS, null) {
+            sensors.addAccelerometerListener(CarSensors.UPDATE_RATE_NORMAL, executor, accelerometerListener)
+            sensors.addGyroscopeListener(CarSensors.UPDATE_RATE_NORMAL, executor, gyroscopeListener)
+            sensors.addCompassListener(CarSensors.UPDATE_RATE_NORMAL, executor, compassListener)
+            sensors.addCarHardwareLocationListener(CarSensors.UPDATE_RATE_NORMAL, executor, locationListener)
+        }
 
         // Nothing obliges the host to answer, and several fields on a typical car
         // never do. Without a deadline those rows sit on "waiting" forever, which
@@ -248,6 +263,45 @@ class CarAppLibraryProbe(
         runCatching(block)
     }
 
+    /**
+     * Takes out a subscription and records what happened to it.
+     *
+     * Two things were invisible before. A subscription taken without its permission
+     * is not refused — it is accepted and then never calls back, so the row reads
+     * "no response" and blames the car. And when the call does throw, the throw went
+     * up to a caller that logged it and moved on, leaving every field in the group
+     * looking merely quiet.
+     *
+     * So the permission state at the moment of subscribing is written onto every
+     * field of [group], and a thrown exception marks the group ERROR with its own
+     * message. The next report then says which of the two happened instead of
+     * leaving it to be guessed at over another week of drives.
+     */
+    private fun subscribe(group: String, permission: String?, block: () -> Unit) {
+        val held = permission == null ||
+            carContext.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+        if (!held) {
+            annotate(group, "NO ${permission!!.substringAfterLast('.')} PERMISSION")
+        }
+        runCatching(block).onFailure { failure ->
+            fields.entries
+                .filter { it.value.group == group }
+                .forEach { (key, field) ->
+                    fields[key] = field.copy(
+                        status = FieldStatus.ERROR,
+                        value = "${failure.javaClass.simpleName}: ${failure.message}",
+                    )
+                }
+        }
+    }
+
+    /** Adds context to every field of a group without changing their status. */
+    private fun annotate(group: String, note: String) {
+        fields.entries
+            .filter { it.value.group == group }
+            .forEach { (key, field) -> fields[key] = field.copy(note = note) }
+    }
+
     private fun mark(group: String, name: String, status: FieldStatus) {
         val key = "$group/$name"
         fields[key]?.let { fields[key] = it.copy(status = status) }
@@ -291,6 +345,11 @@ class CarAppLibraryProbe(
         /** fetchExteriorDimensions was added at Car App API level 7. */
         const val EXTERIOR_DIMENSIONS_API_LEVEL = 7
         const val RESPONSE_DEADLINE_MS = 12_000L
+
+        /** The Play services permissions that gate this data on Android Auto. */
+        const val PERMISSION_FUEL = "com.google.android.gms.permission.CAR_FUEL"
+        const val PERMISSION_SPEED = "com.google.android.gms.permission.CAR_SPEED"
+        const val PERMISSION_MILEAGE = "com.google.android.gms.permission.CAR_MILEAGE"
         const val EMIT_INTERVAL_MS = 1_000L
 
         const val GROUP_MODEL = "Model / EnergyProfile"
