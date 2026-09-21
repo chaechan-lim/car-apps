@@ -1,13 +1,18 @@
 package dev.carapps.probe.projected
 
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import dev.carapps.probe.core.CrashLog
 import dev.carapps.probe.core.ReportExport
 import dev.carapps.probe.core.ReportStore
@@ -30,6 +35,17 @@ class PhoneActivity : AppCompatActivity() {
             textSize = 12f
             typeface = Typeface.MONOSPACE
             setTextIsSelectable(true)
+        }
+
+        // First row, and the first thing to do. The car screen asks for these, but the
+        // prompt appears here on the phone — which during a drive is in a pocket with
+        // the screen off, so it was never answered and every gated field reported
+        // itself as data the car withholds. Granting them sitting still, before
+        // driving, is the only way this reliably happens.
+        val permissionRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(PADDING, PADDING, PADDING, 0)
+            addView(button("Grant car permissions") { requestCarPermissions() })
         }
 
         val buttons = LinearLayout(this).apply {
@@ -61,6 +77,7 @@ class PhoneActivity : AppCompatActivity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            addView(permissionRow)
             addView(buttons)
             addView(
                 ScrollView(this@PhoneActivity).apply { addView(reportView) },
@@ -113,6 +130,59 @@ class PhoneActivity : AppCompatActivity() {
         report?.let(action)
     }
 
+    /**
+     * Asks for the car data permissions from the phone.
+     *
+     * A permission the user has already refused twice is never prompted for again —
+     * the request returns immediately, denied. So a refusal that cannot be undone
+     * here is sent to the app's settings page, where it still can be.
+     */
+    private fun requestCarPermissions() {
+        val missing = RootScreen.CAR_PERMISSIONS.filter {
+            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            Toast.makeText(this, "All car permissions already granted", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val permanentlyRefused = missing.none { shouldShowRequestPermissionRationale(it) } &&
+            askedBefore()
+        if (permanentlyRefused) {
+            Toast.makeText(
+                this,
+                "Refused before — enable them under Permissions",
+                Toast.LENGTH_LONG,
+            ).show()
+            startActivity(
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", packageName, null),
+                )
+            )
+            return
+        }
+        rememberAsked()
+        ActivityCompat.requestPermissions(this, missing.toTypedArray(), REQUEST_CAR_PERMISSIONS)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // onResume rebuilds the report, so the permission block on screen updates
+        // itself and the answer is visible without going back to the car.
+        onResume()
+    }
+
+    private fun askedBefore() =
+        getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_ASKED, false)
+
+    private fun rememberAsked() {
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_ASKED, true).apply()
+    }
+
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label
         setOnClickListener { onClick() }
@@ -141,18 +211,35 @@ class PhoneActivity : AppCompatActivity() {
           Track. Neither goes through review, and an app
           installed that way counts as trusted.
 
+        BEFORE DRIVING
+
+        Tap "Grant car permissions" above, here, while parked.
+
+        The car screen asks for them too, but the prompt appears
+        on the phone — which during a drive is in a pocket with
+        the screen off. Unanswered, it stays denied, and every
+        field behind CAR_FUEL, CAR_SPEED or CAR_MILEAGE then
+        reports as data the car withholds. Check the permission
+        block above reads "granted" before reading anything else.
+
         ONCE IT RUNS
 
         1. Open "Car Probe" from the car launcher.
-        2. Tap "Log" on the car screen.
-        3. Come back here to copy, share, or file the report.
+        2. If a row says a permission is missing, grant it here
+           and tap "Retry" on the car screen.
+        3. Tap "Log" on the car screen.
+        4. Come back here to copy, share, or file the report.
 
         Expect several fields to report UNAVAILABLE. That is the
-        measurement, not a bug.
+        measurement, not a bug — but only once the permissions
+        above are granted.
     """.trimIndent()
 
     private companion object {
         const val PADDING = 48
         const val REPO = "chaechan-lim/car-apps"
+        const val REQUEST_CAR_PERMISSIONS = 1
+        const val PREFS = "probe"
+        const val KEY_ASKED = "asked_car_permissions"
     }
 }

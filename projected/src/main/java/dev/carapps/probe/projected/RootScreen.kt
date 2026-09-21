@@ -248,8 +248,9 @@ class RootScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleO
         }
     }
 
-    private companion object {
-        const val TAG = "CarProbe"
+    /** Not private: [PhoneActivity] asks for the same list, where it can be answered. */
+    companion object {
+        private const val TAG = "CarProbe"
 
         /**
          * Android Auto gates car data behind these, and a subscription taken without
