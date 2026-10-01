@@ -95,76 +95,108 @@ class RootScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleO
             .getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_LIST)
 
         val listBuilder = ItemList.Builder()
-        // Errors alongside the readings, because an error row now carries the reason
-        // the subscription failed, and the host forbids drilling down while moving —
-        // which is exactly when the interesting failures happen.
-        val answered = snapshot.fields.filter {
-            it.status == FieldStatus.SUCCESS || it.status == FieldStatus.ERROR
-        }
+        var rows = 0
 
-        // One row is always spent on the drill-down, so the readings get the rest.
-        val room = (limit - 1).coerceAtLeast(1)
-        answered.take(room).forEach { field ->
-            listBuilder.addItem(
-                Row.Builder()
-                    .setTitle(field.label)
-                    .addText(
-                        if (field.status == FieldStatus.ERROR) {
-                            "${field.status.display} ${field.value}"
-                        } else {
-                            field.value
-                        }
-                    )
-                    .build()
-            )
-        }
-
-        if (answered.isEmpty()) {
-            listBuilder.addItem(
-                Row.Builder()
-                    .setTitle("No readings yet")
-                    .addText(
-                        if (snapshot.pendingCount > 0) "Waiting for the car to answer"
-                        else "This car reported nothing"
-                    )
-                    .build()
-            )
-        }
-
-        // On screen, not buried in the log. A field gated behind a permission this
-        // app has not been granted looks exactly like a field the car withholds, and
-        // the two were confused for weeks — so the thing that tells them apart
-        // belongs next to the readings rather than in a report nobody opens while
-        // driving.
+        // Permissions first and always, granted or not. A field gated behind a
+        // permission this app does not hold looks exactly like a field the car
+        // withholds, and that confusion cost weeks — so the line that tells them
+        // apart leads, instead of sitting below readings that may crowd it out.
         val missing = CAR_PERMISSIONS.filter {
             carContext.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missing.isNotEmpty()) {
+        listBuilder.addItem(
+            Row.Builder()
+                .setTitle(
+                    if (missing.isEmpty()) "Permissions · all granted"
+                    else "⚠ ${missing.size} permission(s) denied"
+                )
+                .addText(
+                    if (missing.isEmpty()) "Nothing below is blocked by this app"
+                    else missing.joinToString { it.substringAfterLast('.') } +
+                        " — grant on the phone, then Retry"
+                )
+                .build()
+        )
+        rows++
+
+        // One line per group rather than per field. The host blocks navigation while
+        // the car is moving, so a detail screen is unreachable exactly when the car
+        // is actually reporting — and a group's verdict is what is being asked for
+        // anyway. The full per-field table is written to the phone every 15 seconds.
+        val groups = snapshot.fields.groupBy { it.group }
+        val summaries = groups.map { (group, fields) -> groupSummary(group, fields) }
+            // Groups worth reading first: failures, then anything with a value, then
+            // the silent ones.
+            .sortedByDescending { it.weight }
+
+        // The drill-down keeps the last row, but only if a row is left to give it.
+        val room = (limit - rows - 1).coerceAtLeast(1)
+        summaries.take(room).forEach { summary ->
             listBuilder.addItem(
                 Row.Builder()
-                    .setTitle("${missing.size} permission(s) not granted")
-                    .addText(
-                        missing.joinToString { it.substringAfterLast('.') } +
-                            " — answer the prompt on the phone"
-                    )
+                    .setTitle(summary.title)
+                    .addText(summary.detail)
+                    .build()
+            )
+            rows++
+        }
+
+        if (rows < limit) {
+            listBuilder.addItem(
+                Row.Builder()
+                    .setTitle("All ${snapshot.fields.size} fields")
+                    .addText("park to browse · report auto-saves to the phone")
+                    .setBrowsable(true)
+                    .setOnClickListener { screenManager.push(GroupsScreen(carContext)) }
                     .build()
             )
         }
-
-        val hidden = (answered.size - room).coerceAtLeast(0)
-        listBuilder.addItem(
-            Row.Builder()
-                .setTitle("All fields" + if (hidden > 0) " (+$hidden more)" else "")
-                .addText("${snapshot.fields.size} probed · park to browse")
-                .setBrowsable(true)
-                .setOnClickListener { screenManager.push(GroupsScreen(carContext)) }
-                .build()
-        )
 
         return ListTemplate.Builder()
             .setHeader(header(snapshot.verdict, logAction = true))
             .setSingleList(listBuilder.build())
             .build()
+    }
+
+    /**
+     * One group reduced to a line that can be read at a glance, while moving.
+     *
+     * [weight] orders them: a group that failed outright is the most useful thing on
+     * the screen, a group with values is next, and a group still silent is last.
+     */
+    private data class GroupSummary(val title: String, val detail: String, val weight: Int)
+
+    private fun groupSummary(group: String, fields: List<dev.carapps.probe.core.CarField>): GroupSummary {
+        val ok = fields.count { it.status == FieldStatus.SUCCESS }
+        val failed = fields.count { it.status == FieldStatus.ERROR }
+        val waiting = fields.count { it.status == FieldStatus.NOT_PROBED }
+        // A note is only ever set to explain why a group cannot answer, so it beats
+        // any count when deciding what the row should say.
+        val note = fields.firstNotNullOfOrNull { it.note.takeIf { n -> n.startsWith("NO ") } }
+
+        val counts = buildList {
+            if (ok > 0) add("$ok ok")
+            if (failed > 0) add("$failed error")
+            if (waiting > 0) add("$waiting waiting")
+            val refused = fields.size - ok - failed - waiting
+            if (refused > 0) add("$refused not given")
+        }.joinToString(" · ")
+
+        val sample = fields.firstOrNull { it.status == FieldStatus.SUCCESS }?.let {
+            "${it.name}=${it.value}"
+        }
+        val failure = fields.firstOrNull { it.status == FieldStatus.ERROR }?.value
+
+        return GroupSummary(
+            title = "$group · $counts",
+            detail = note ?: failure ?: sample ?: "no answer from the car",
+            weight = when {
+                note != null -> 4
+                failed > 0 -> 3
+                ok > 0 -> 2
+                else -> 1
+            },
+        )
     }
 
     private fun header(title: String, logAction: Boolean = false) = Header.Builder()
