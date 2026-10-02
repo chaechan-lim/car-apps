@@ -8,6 +8,9 @@ lifecycle = "2.8.7"
 # Google I/O 2026 shipped 1.9.0-alpha01 (adaptive mini-player, Chip/CondensedItem,
 # templated media). Bump here once you want those.
 carApp = "1.7.0"
+junit = "4.13.2"
+# Android ships org.json as stubs that throw on the JVM; unit tests need the real thing.
+orgJson = "20240303"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -20,6 +23,9 @@ car-app = { module = "androidx.car.app:app", version.ref = "carApp" }
 car-app-projected = { module = "androidx.car.app:app-projected", version.ref = "carApp" }
 # Android Automotive OS (app runs natively in the car).
 car-app-automotive = { module = "androidx.car.app:app-automotive", version.ref = "carApp" }
+
+junit = { module = "junit:junit", version.ref = "junit" }
+org-json = { module = "org.json:json", version.ref = "orgJson" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

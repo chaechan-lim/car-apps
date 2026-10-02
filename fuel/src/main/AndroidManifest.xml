@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Opinet. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      Fuel level and range, from the car. The probe showed this car supplies both —
+      once the permission is actually granted, which on Android Auto means granted
+      on the phone. The phone screen has a button for exactly that reason.
+    -->
+    <uses-permission android:name="com.google.android.gms.permission.CAR_FUEL" />
+
+    <!-- Both, never FINE alone: on Android 12+ a request for FINE alone is ignored. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- The one low-range notice per drive. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- PlaceListMapTemplate. Without it the host refuses the template. -->
+    <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
+
+    <application
+        android:name=".FuelApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_fuel_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
+
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+        <meta-data
+            android:name="androidx.car.app.theme"
+            android:resource="@style/FuelCarTheme" />
+
+        <!--
+          POI is the category Android Auto defines for this: fuel, parking and
+          charging finders that show places and hand off to navigation. It is a
+          category Play will publish, unlike the IOT one the probe borrowed.
+        -->
+        <service
+            android:name=".FuelCarAppService"
+            android:exported="true"
+            android:icon="@mipmap/ic_fuel_launcher"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.POI" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name=".FuelPhoneActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -2,10 +2,28 @@ Android Auto vehicle data probe. Install on a **phone**, not the car.
 
 | Asset | Use |
 |---|---|
-| `parking-probe-*.apk` | **Parking floor probe — an ordinary phone app, just install it** |
+| `fuel-finder-*.aab` | **고급유 주유소 — upload to its own Play app, internal testing track** |
+| `fuel-finder-*-debug.apk` | Same app for the Desktop Head Unit; a real car ignores sideloads |
+| `parking-probe-*.apk` | Parking floor probe — an ordinary phone app, just install it |
 | `car-probe-auto-*.aab` | Upload to Play — internal testing track, the only route into a real car |
 | `car-probe-auto-*-release.apk` | Desktop Head Unit, or direct install |
 | `car-probe-auto-*-debug.apk` | Same, but accepts any host |
+
+**고급유 주유소 (fuel finder), new in this build.** Open it in the car and the
+nearest stations selling premium petrol are already on the map, nearest first,
+with the car's own fuel level and range in the title. Tap one to hand it to the
+navigation app. When range drops below a threshold (default 60 km) it says so
+once per drive — on drives where it has been opened, which is as far as Android
+Auto lets a template app go on its own.
+
+Set it up on the phone first: the Opinet API key (free; entered on the phone and
+never built into the APK, since releases are public), the fuel type, and the
+permissions. "지금 위치로 찾기" runs a real search from the phone, so the key and
+the data can be checked before the car is involved.
+
+An empty answer is never trusted. Opinet answers a wrong key with HTTP 200 and an
+empty list, which is identical to "nothing nearby"; this app re-asks for ordinary
+petrol in central Gangnam before believing it.
 
 `parking-probe` uses no Android Auto at all, so none of the caveats below apply to
 it: sideload it, grant the permissions, pick the car's Bluetooth device, and drive.

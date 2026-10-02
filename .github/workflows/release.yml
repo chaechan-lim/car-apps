@@ -38,7 +38,9 @@ jobs:
       - name: Build APKs and bundle
         run: |
           ./gradlew :projected:assembleRelease :projected:assembleDebug \
-                    :projected:bundleRelease :parking:assembleRelease
+                    :projected:bundleRelease :parking:assembleRelease \
+                    :fuel:testReleaseUnitTest :fuel:assembleRelease \
+                    :fuel:assembleDebug :fuel:bundleRelease
 
       - name: Verify release signature
         run: |
@@ -60,6 +62,11 @@ jobs:
           # Plain phone app: no Android Auto, so no trusted-source install needed.
           cp parking/build/outputs/apk/release/parking-release.apk \
              "out/parking-probe-$TAG.apk"
+          # Premium fuel finder: a separate Play app, so its own bundle.
+          cp fuel/build/outputs/bundle/release/fuel-release.aab \
+             "out/fuel-finder-$TAG.aab"
+          cp fuel/build/outputs/apk/debug/fuel-debug.apk \
+             "out/fuel-finder-$TAG-debug.apk"
           ls -la out
 
       # gh is preinstalled on the runner, so publishing needs no extra action.

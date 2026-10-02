@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="fuel_brand">#FF1E5AA8</color>
+
+    <!-- Read by the host for library-drawn screens on the car, chiefly the
+         permission prompt. -->
+    <style name="FuelCarTheme">
+        <item name="carColorPrimary">@color/fuel_brand</item>
+        <item name="carColorPrimaryDark">@color/fuel_brand</item>
+        <item name="carColorSecondary">@android:color/holo_orange_light</item>
+        <item name="carColorSecondaryDark">@android:color/holo_orange_dark</item>
+    </style>
+</resources>
