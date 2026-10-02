@@ -68,6 +68,11 @@ class OpinetClient(
             "&radius=${radiusMeters.coerceIn(1, MAX_RADIUS)}" +
             "&sort=$SORT_BY_DISTANCE" +
             "&prodcd=${product.code}" +
+            // The key goes out under both names. Opinet's documentation calls the
+            // parameter certkey; the live API only honours code, and answers certkey
+            // alone with the same empty list it gives a wrong key. The first real key
+            // failed exactly that way while being perfectly valid.
+            "&code=${URLEncoder.encode(key.trim(), "UTF-8")}" +
             "&certkey=${URLEncoder.encode(key.trim(), "UTF-8")}"
 
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
